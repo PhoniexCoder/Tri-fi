@@ -76,10 +76,20 @@ class CSIAmplitudeBuffer:
         """Add a single CSI amplitude vector (n_subcarriers,) to the buffer."""
         if node_id not in self._buffers:
             return
-        self._buffers[node_id].append(amplitude.astype(np.float32))
+        amp = amplitude.astype(np.float32)
+        # Normalize length: if buffer already has frames, match the first frame's length
+        buf = self._buffers[node_id]
+        if len(buf) > 0:
+            target_len = len(buf[0])
+            if len(amp) != target_len:
+                if len(amp) > target_len:
+                    amp = amp[:target_len]       # truncate extra subcarriers
+                else:
+                    amp = np.pad(amp, (0, target_len - len(amp)))  # zero-pad
+        buf.append(amp)
 
         # Run inference when buffer is full
-        if len(self._buffers[node_id]) >= self._buffer_size:
+        if len(buf) >= self._buffer_size:
             self._run_inference(node_id)
 
     def _run_inference(self, node_id: int):
@@ -89,7 +99,12 @@ class CSIAmplitudeBuffer:
 
         # Stack frames → (n_subcarriers, n_timesteps)
         buf = list(self._buffers[node_id])
-        amp_matrix = np.stack(buf, axis=1)  # (n_sub, buffer_size)
+        try:
+            amp_matrix = np.stack(buf, axis=1)  # (n_sub, buffer_size)
+        except ValueError:
+            # Last resort: if shapes still mismatch, clear buffer and skip
+            self._buffers[node_id].clear()
+            return
 
         try:
             features = preprocess_realtime_csi(amp_matrix, self._scaler, window_size=self._buffer_size)
