@@ -5,7 +5,7 @@
     "1": "human_present"
   },
   "model_type": "RandomForestClassifier",
-  "n_features": 10,
+  "n_features": 18,
   "feature_names": [
     "mean_variance",
     "mean_energy",
@@ -13,37 +13,85 @@
     "mean_std",
     "mean_max",
     "mean_range",
+    "mean_diff_energy",
+    "zero_crossing_rate",
+    "autocorr_lag1",
+    "temporal_stability",
     "global_max",
     "global_energy",
     "variance_of_means",
-    "mean_diff_energy"
+    "breathing_dominant_freq",
+    "breathing_band_power",
+    "breathing_spectral_entropy",
+    "breathing_peak_snr",
+    "breathing_detected"
   ],
   "window_size": 100,
-  "accuracy": 0.9689,
-  "train_samples": 28564,
-  "test_samples": 7141,
+  "sample_rate_hz": 33.0,
+  "accuracy": 0.9807,
+  "train_samples": 49205,
+  "test_samples": 12302,
   "sample_fraction": 0.07,
+  "smoothing": true,
+  "breathing_detection": {
+    "method": "FFT",
+    "freq_range_hz": [
+      0.1,
+      0.5
+    ],
+    "features": [
+      "breathing_dominant_freq",
+      "breathing_band_power",
+      "breathing_spectral_entropy",
+      "breathing_peak_snr",
+      "breathing_detected"
+    ]
+  },
   "rf_params": {
-    "n_estimators": 150,
-    "max_depth": 20,
-    "min_samples_split": 5,
+    "n_estimators": 200,
+    "max_depth": 25,
+    "min_samples_split": 4,
     "min_samples_leaf": 2,
+    "max_features": "sqrt",
     "random_state": 42,
     "class_weight": "balanced"
   },
   "feature_importances": {
-    "global_energy": 0.1848,
-    "mean_amplitude": 0.1333,
-    "mean_energy": 0.113,
-    "mean_max": 0.106,
-    "global_max": 0.0997,
-    "mean_range": 0.0964,
-    "mean_diff_energy": 0.0926,
-    "mean_std": 0.0632,
-    "mean_variance": 0.0573,
-    "variance_of_means": 0.0539
+    "global_energy": 0.1274,
+    "temporal_stability": 0.1156,
+    "mean_max": 0.0919,
+    "mean_diff_energy": 0.0882,
+    "mean_amplitude": 0.0781,
+    "global_max": 0.0714,
+    "mean_energy": 0.0697,
+    "mean_range": 0.0685,
+    "mean_std": 0.0586,
+    "mean_variance": 0.0504,
+    "variance_of_means": 0.0414,
+    "autocorr_lag1": 0.0295,
+    "breathing_band_power": 0.0293,
+    "breathing_peak_snr": 0.028,
+    "zero_crossing_rate": 0.0277,
+    "breathing_spectral_entropy": 0.0231,
+    "breathing_detected": 0.0013,
+    "breathing_dominant_freq": 0.0
   },
-  "usage": {
-    "inference": "from csi_preprocessing import preprocess_realtime_csi; import joblib; model = joblib.load('model.pkl'); scaler = joblib.load('scaler.pkl'); features = preprocess_realtime_csi(csi_buffer, scaler); prediction = model.predict(features)"
+  "triangle_consensus": {
+    "nodes": 3,
+    "min_detect": 2,
+    "positions": {
+      "1": [
+        0,
+        0
+      ],
+      "2": [
+        1,
+        0
+      ],
+      "3": [
+        0.5,
+        1
+      ]
+    }
   }
 }
