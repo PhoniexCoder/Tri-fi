@@ -23,15 +23,21 @@ def run_test(model, name, mock_matrix):
     with torch.no_grad():
         out = model(tensor_in)
         probs = torch.softmax(out, dim=1).numpy()[0]
-    
+
     print(f"--- TEST: {name} ---")
-    print(f"Class 0 (Empty): {probs[0]*100:5.1f}% | Class 1 (1 Person): {probs[1]*100:5.1f}% | Class 2: {probs[2]*100:5.1f}% | Class 3: {probs[3]*100:5.1f}%")
-    
-    argmax = np.argmax(probs)
+    # Print probabilities for all 6 classes for full visibility
+    for idx, p in enumerate(probs):
+        if idx == 0:
+            label = "Empty/No Human"
+        else:
+            label = f"Class {idx} (People={idx})"
+        print(f"  Class {idx}: {p*100:5.1f}%  -> {label}")
+
+    argmax = int(np.argmax(probs))
     if argmax == 0:
-         print(f"Result: ✅ Correctly rejected as EMPTY/NOISE.")
+        print("Result: ✅ Correctly rejected as EMPTY/NOISE.")
     else:
-         print(f"Result: 🚨 BIAS ALARM! Falsely predicted human presence (Class {argmax}).")
+        print(f"Result: 🚨 BIAS ALARM! Falsely predicted human presence (Class {argmax}).")
     print()
 
 def main():
