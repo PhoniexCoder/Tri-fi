@@ -439,11 +439,8 @@
                 fill="url(#heat-grad)" opacity="0"
                 style="transition: cx 0.8s, cy 0.8s, opacity 0.5s"/>
 
-        <!-- Survivor dot -->
-        <circle id="survivor-dot" cx="250" cy="260" r="12"
-                fill="#ef4444" filter="url(#glow-red)"/>
-        <!-- Pulse ring -->
-        <circle id="pulse-ring" cx="250" cy="260" r="12"/>
+        <!-- Multi-Survivor dynamically injected layer -->
+        <g id="survivors-layer"></g>
 
         <!-- Node 1 — Bottom (USB / laptop) -->
         <g id="node-1-g" filter="url(#glow)">
@@ -593,10 +590,14 @@
     document.getElementById("val-prob-pct").textContent = `${pct}%`;
     document.getElementById("conf-bar").style.width = `${prob * 100}%`;
 
+    const survivorsCount = data.survivors || 0;
+    
     if (detected) {
       presenceCard.classList.add("detected");
-      presenceLabel.textContent = "⚠ SURVIVOR";
+      presenceLabel.textContent = survivorsCount > 1 ? `⚠ MULTIPLE SURVIVORS (${survivorsCount})` : "⚠ SURVIVOR DETECTED";
       presenceLabel.classList.add("detected");
+      
+      alertBanner.textContent = survivorsCount > 1 ? `⚠ MULTIPLE SURVIVORS (${survivorsCount})` : "⚠ SURVIVOR DETECTED";
       alertBanner.style.display = "block";
       triPoly.classList.add("detected");
     } else {
@@ -627,24 +628,49 @@
       }
     });
 
-    // ── Survivor position on SVG
-    const [svgX, svgY] = posToSVG(px, py);
+    // ── Dynamic Survivor Rendering 
+    const survivorsLayer = document.getElementById("survivors-layer");
+    if (survivorsLayer) survivorsLayer.innerHTML = "";
+    
+    if (detected && data.survivors_list && data.survivors_list.length > 0) {
+      let sumSvgX = 0, sumSvgY = 0;
+      let highestProb = 0;
 
-    if (detected) {
-      survivorDot.setAttribute("cx", svgX);
-      survivorDot.setAttribute("cy", svgY);
-      survivorDot.classList.add("visible");
+      data.survivors_list.forEach((s, idx) => {
+        const [svgX, svgY] = posToSVG(s.x, s.y);
+        sumSvgX += svgX;
+        sumSvgY += svgY;
+        highestProb = Math.max(highestProb, s.intensity);
 
-      pulseRing.setAttribute("cx", svgX);
-      pulseRing.setAttribute("cy", svgY);
-      pulseRing.classList.add("visible");
+        const pulse = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        pulse.setAttribute("cx", svgX);
+        pulse.setAttribute("cy", svgY);
+        pulse.setAttribute("r", "12");
+        pulse.setAttribute("fill", "none");
+        pulse.setAttribute("stroke", "#ef4444");
+        pulse.setAttribute("stroke-width", "2");
+        pulse.style.animation = `pulse-expand 1.5s infinite ${idx * 0.3}s`;
 
-      heatGlow.setAttribute("cx", svgX);
-      heatGlow.setAttribute("cy", svgY);
-      heatGlow.style.opacity = (prob * 0.8).toFixed(2);
+        const core = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        core.setAttribute("cx", svgX);
+        core.setAttribute("cy", svgY);
+        core.setAttribute("r", "12");
+        core.setAttribute("fill", "#ef4444");
+        core.setAttribute("filter", "url(#glow-red)");
+
+        if (survivorsLayer) {
+           survivorsLayer.appendChild(pulse);
+           survivorsLayer.appendChild(core);
+        }
+      });
+
+      const avgX = sumSvgX / data.survivors_list.length;
+      const avgY = sumSvgY / data.survivors_list.length;
+      
+      heatGlow.setAttribute("cx", avgX);
+      heatGlow.setAttribute("cy", avgY);
+      heatGlow.style.opacity = (highestProb * 0.8).toFixed(2);
     } else {
-      survivorDot.classList.remove("visible");
-      pulseRing.classList.remove("visible");
       heatGlow.style.opacity = "0";
     }
   }
