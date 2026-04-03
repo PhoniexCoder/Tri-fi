@@ -1,0 +1,49 @@
+{
+  "task": "csi_human_presence_detection",
+  "classes": {
+    "0": "no_human",
+    "1": "human_present"
+  },
+  "model_type": "RandomForestClassifier",
+  "n_features": 10,
+  "feature_names": [
+    "mean_variance",
+    "mean_energy",
+    "mean_amplitude",
+    "mean_std",
+    "mean_max",
+    "mean_range",
+    "global_max",
+    "global_energy",
+    "variance_of_means",
+    "mean_diff_energy"
+  ],
+  "window_size": 100,
+  "accuracy": 0.9689,
+  "train_samples": 28564,
+  "test_samples": 7141,
+  "sample_fraction": 0.07,
+  "rf_params": {
+    "n_estimators": 150,
+    "max_depth": 20,
+    "min_samples_split": 5,
+    "min_samples_leaf": 2,
+    "random_state": 42,
+    "class_weight": "balanced"
+  },
+  "feature_importances": {
+    "global_energy": 0.1848,
+    "mean_amplitude": 0.1333,
+    "mean_energy": 0.113,
+    "mean_max": 0.106,
+    "global_max": 0.0997,
+    "mean_range": 0.0964,
+    "mean_diff_energy": 0.0926,
+    "mean_std": 0.0632,
+    "mean_variance": 0.0573,
+    "variance_of_means": 0.0539
+  },
+  "usage": {
+    "inference": "from csi_preprocessing import preprocess_realtime_csi; import joblib; model = joblib.load('model.pkl'); scaler = joblib.load('scaler.pkl'); features = preprocess_realtime_csi(csi_buffer, scaler); prediction = model.predict(features)"
+  }
+}

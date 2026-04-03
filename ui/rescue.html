@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trifi — Triangular 3-Node Survivor Detection</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep:    #070b12;
+      --bg-card:    #0d1421;
+      --bg-panel:   #111827;
+      --border:     #1e2d45;
+      --accent:     #00d4ff;
+      --accent2:    #7c3aed;
+      --green:      #10b981;
+      --red:        #ef4444;
+      --orange:     #f59e0b;
+      --text:       #e2e8f0;
+      --muted:      #64748b;
+      --node1:      #00d4ff;
+      --node2:      #7c3aed;
+      --node3:      #10b981;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-deep);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      height: 100vh; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    #header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 28px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo h1 {
+      font-family: 'Space Mono', monospace;
+      font-size: 18px; letter-spacing: 2px;
+      color: var(--accent);
+    }
+    .logo span { color: var(--muted); font-size: 12px; margin-top: 2px; display: block; }
+
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .ws-badge {
+      padding: 6px 14px; border-radius: 20px; font-size: 12px;
+      font-family: 'Space Mono', monospace; font-weight: 700;
+      background: var(--red); color: white;
+      transition: background 0.3s;
+    }
+    .ws-badge.online { background: var(--green); }
+    .node-count {
+      font-family: 'Space Mono', monospace; font-size: 13px;
+      color: var(--muted);
+    }
+    .node-count span { color: var(--orange); font-weight: 700; }
+
+    /* ── Main layout ─────────────────────────────────────────────────────── */
+    #main {
+      display: grid;
+      grid-template-columns: 300px 1fr 280px;
+      flex: 1; overflow: hidden;
+    }
+
+    /* ── Left Panel — Vitals ─────────────────────────────────────────────── */
+    #panel-left {
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      padding: 20px; display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto;
+    }
+
+    .panel-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px; letter-spacing: 2px;
+      color: var(--muted); text-transform: uppercase;
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+
+    /* Detection status card */
+    #presence-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+      text-align: center;
+      transition: border-color 0.4s, box-shadow 0.4s;
+    }
+    #presence-card.detected {
+      border-color: var(--red);
+      box-shadow: 0 0 30px rgba(239,68,68,0.2);
+    }
+    #presence-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 22px; font-weight: 700;
+      letter-spacing: 3px; color: var(--muted);
+      transition: color 0.3s;
+    }
+    #presence-label.detected { color: var(--red); animation: flash-text 1.2s infinite alternate; }
+    @keyframes flash-text { from { opacity: 1; } to { opacity: 0.6; } }
+
+    #confidence-bar-wrap {
+      margin-top: 14px;
+    }
+    .bar-label {
+      display: flex; justify-content: space-between;
+      font-size: 11px; color: var(--muted); margin-bottom: 5px;
+      font-family: 'Space Mono', monospace;
+    }
+    .bar-track {
+      height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent2), var(--red));
+      transition: width 0.5s ease;
+    }
+
+    /* Metric rows */
+    .metric-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .metric-row:last-child { border-bottom: none; }
+    .metric-label { color: var(--muted); }
+    .metric-val {
+      font-family: 'Space Mono', monospace;
+      font-weight: 700; color: var(--accent);
+    }
+
+    /* Node signal bars */
+    .node-bar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0;
+    }
+    .node-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .node-dot.n1 { background: var(--node1); box-shadow: 0 0 6px var(--node1); }
+    .node-dot.n2 { background: var(--node2); box-shadow: 0 0 6px var(--node2); }
+    .node-dot.n3 { background: var(--node3); box-shadow: 0 0 6px var(--node3); }
+    .node-dot.offline { background: var(--muted); box-shadow: none; }
+
+    .node-info { flex: 1; }
+    .node-name {
+      font-size: 12px; font-family: 'Space Mono', monospace;
+      color: var(--text); margin-bottom: 3px;
+    }
+    .node-signal-bar {
+      height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+    }
+    .node-signal-fill {
+      height: 100%; border-radius: 2px; transition: width 0.5s;
+    }
+    .n1 .node-signal-fill { background: var(--node1); }
+    .n2-fill { background: var(--node2); }
+    .n3-fill { background: var(--node3); }
+
+    /* ── Center — Triangle Visualization ─────────────────────────────────── */
+    #center {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      position: relative; gap: 10px; padding: 20px;
+    }
+
+    #triangle-wrap {
+      position: relative;
+      width: min(55vh, 55vw); height: min(55vh, 55vw);
+    }
+
+    #triangle-svg {
+      width: 100%; height: 100%;
+      filter: drop-shadow(0 0 20px rgba(0,212,255,0.1));
+    }
+
+    /* Grid lines behind triangle */
+    .grid-line { stroke: #1e2d45; stroke-width: 0.5; }
+    /* Triangle fill */
+    .tri-fill {
+      fill: rgba(0,212,255,0.03);
+      stroke: rgba(0,212,255,0.5);
+      stroke-width: 1.5;
+      stroke-dasharray: none;
+      transition: fill 0.5s;
+    }
+    .tri-fill.detected { fill: rgba(239,68,68,0.08); stroke: rgba(239,68,68,0.6); }
+
+    /* Range rings */
+    .range-ring {
+      fill: none; stroke: #1e2d45; stroke-width: 0.8;
+      stroke-dasharray: 4 4;
+    }
+
+    /* Node circles */
+    .node-circle { filter: url(#glow); cursor: default; }
+
+    /* Survivor dot */
+    #survivor-dot {
+      transition: cx 0.8s ease, cy 0.8s ease, opacity 0.4s;
+      opacity: 0;
+    }
+    #survivor-dot.visible { opacity: 1; }
+
+    /* Pulse ring around survivor */
+    #pulse-ring {
+      fill: none; stroke: var(--red);
+      stroke-width: 2; opacity: 0;
+      transition: cx 0.8s ease, cy 0.8s ease;
+    }
+    #pulse-ring.visible { animation: pulse-expand 1.5s infinite; }
+    @keyframes pulse-expand {
+      0%   { r: 10px; opacity: 0.8; stroke-width: 2; }
+      100% { r: 40px; opacity: 0;   stroke-width: 0.5; }
+    }
+
+    #alert-banner {
+      position: absolute;
+      top: 12px;
+      background: linear-gradient(135deg, #7f1d1d, #991b1b);
+      border: 1px solid var(--red);
+      color: white;
+      padding: 10px 28px;
+      border-radius: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 14px; letter-spacing: 3px;
+      box-shadow: 0 0 30px rgba(239,68,68,0.4);
+      display: none;
+      animation: alert-pulse 0.8s infinite alternate;
+    }
+    @keyframes alert-pulse { from { box-shadow: 0 0 20px rgba(239,68,68,0.4); }
+                             to   { box-shadow: 0 0 50px rgba(239,68,68,0.7); } }
+
+    .map-label {
+      color: var(--muted); font-size: 12px; letter-spacing: 1px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* ── Right Panel — Node Detail ───────────────────────────────────────── */
+    #panel-right {
+      background: var(--bg-card);
+      border-left: 1px solid var(--border);
+      padding: 20px; display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto;
+    }
+
+    .node-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .node-card.active-n1 { border-color: rgba(0,212,255,0.4); box-shadow: 0 0 12px rgba(0,212,255,0.08); }
+    .node-card.active-n2 { border-color: rgba(124,58,237,0.4); box-shadow: 0 0 12px rgba(124,58,237,0.08); }
+    .node-card.active-n3 { border-color: rgba(16,185,129,0.4); box-shadow: 0 0 12px rgba(16,185,129,0.08); }
+
+    .node-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .node-card-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 13px; font-weight: 700;
+    }
+    .node-status-pill {
+      font-size: 10px; padding: 3px 8px; border-radius: 10px;
+      font-family: 'Space Mono', monospace;
+      background: var(--border); color: var(--muted);
+    }
+    .node-status-pill.online { background: rgba(16,185,129,0.2); color: var(--green); }
+
+    .node-metric {
+      display: flex; justify-content: space-between;
+      font-size: 12px; padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .node-metric:last-child { border-bottom: none; }
+    .node-metric .lbl { color: var(--muted); }
+    .node-metric .val { font-family: 'Space Mono', monospace; font-size: 12px; }
+
+    /* ML Mode badge */
+    #mode-badge {
+      font-family: 'Space Mono', monospace; font-size: 10px;
+      padding: 4px 10px; border-radius: 4px;
+      background: rgba(124,58,237,0.2); color: #a78bfa;
+      border: 1px solid rgba(124,58,237,0.3);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <div class="logo">
+    <div class="logo-icon">△</div>
+    <div>
+      <h1>TRIFI TACTICAL</h1>
+      <span>Triangular 3-Node Survivor Detection Matrix</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="node-count">NODES ACTIVE: <span id="val-nodes">0</span> / 3</div>
+    <span id="mode-badge">LOADING...</span>
+    <div id="ws-badge" class="ws-badge">OFFLINE</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Left Panel -->
+  <div id="panel-left">
+    <div class="panel-title">Detection Status</div>
+
+    <div id="presence-card">
+      <div id="presence-label">NO SURVIVOR</div>
+      <div id="confidence-bar-wrap">
+        <div class="bar-label">
+          <span>Confidence</span>
+          <span id="val-prob-pct">0.0%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" id="conf-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-title">Fused Signal</div>
+    <div>
+      <div class="metric-row">
+        <span class="metric-label">Avg RSSI</span>
+        <span class="metric-val" id="val-rssi">-- dBm</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Max Motion</span>
+        <span class="metric-val" id="val-motion">--</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Breathing</span>
+        <span class="metric-val" id="val-br">-- rpm</span>
+      </div>
+    </div>
+
+    <div class="panel-title">Node Signals</div>
+    <div>
+      <div class="node-bar" id="node-bar-1">
+        <div class="node-dot n1"></div>
+        <div class="node-info">
+          <div class="node-name">NODE 1 (BOTTOM)</div>
+          <div class="node-signal-bar">
+            <div class="node-signal-fill" id="sig-1" style="width:0%; background:var(--node1)"></div>
+          </div>
+        </div>
+        <span style="font-family:monospace;font-size:11px;color:var(--muted)" id="rssi-1">--</span>
+      </div>
+      <div class="node-bar" id="node-bar-2">
+        <div class="node-dot n2"></div>
+        <div class="node-info">
+          <div class="node-name">NODE 2 (TOP-LEFT)</div>
+          <div class="node-signal-bar">
+            <div class="node-signal-fill" id="sig-2" style="width:0%; background:var(--node2)"></div>
+          </div>
+        </div>
+        <span style="font-family:monospace;font-size:11px;color:var(--muted)" id="rssi-2">--</span>
+      </div>
+      <div class="node-bar" id="node-bar-3">
+        <div class="node-dot n3"></div>
+        <div class="node-info">
+          <div class="node-name">NODE 3 (TOP-RIGHT)</div>
+          <div class="node-signal-bar">
+            <div class="node-signal-fill" id="sig-3" style="width:0%; background:var(--node3)"></div>
+          </div>
+        </div>
+        <span style="font-family:monospace;font-size:11px;color:var(--muted)" id="rssi-3">--</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center Triangle -->
+  <div id="center">
+    <div id="alert-banner">⚠ SURVIVOR DETECTED</div>
+
+    <div id="triangle-wrap">
+      <svg id="triangle-svg" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glow-red">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="heat-grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%"   stop-color="#ef4444" stop-opacity="0.5"/>
+            <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <!-- Background grid -->
+        <line x1="0" y1="100" x2="500" y2="100" class="grid-line"/>
+        <line x1="0" y1="200" x2="500" y2="200" class="grid-line"/>
+        <line x1="0" y1="300" x2="500" y2="300" class="grid-line"/>
+        <line x1="0" y1="400" x2="500" y2="400" class="grid-line"/>
+        <line x1="100" y1="0" x2="100" y2="500" class="grid-line"/>
+        <line x1="200" y1="0" x2="200" y2="500" class="grid-line"/>
+        <line x1="300" y1="0" x2="300" y2="500" class="grid-line"/>
+        <line x1="400" y1="0" x2="400" y2="500" class="grid-line"/>
+
+        <!-- Triangle area -->
+        <!-- Node positions: N1=bottom(250,440), N2=top-left(80,80), N3=top-right(420,80) -->
+        <polygon id="tri-poly" class="tri-fill"
+                 points="250,440 80,80 420,80"/>
+
+        <!-- Range rings from each node -->
+        <circle cx="250" cy="440" r="90"  class="range-ring" opacity="0.5"/>
+        <circle cx="250" cy="440" r="160" class="range-ring" opacity="0.3"/>
+        <circle cx="80"  cy="80"  r="90"  class="range-ring" opacity="0.5"/>
+        <circle cx="80"  cy="80"  r="160" class="range-ring" opacity="0.3"/>
+        <circle cx="420" cy="80"  r="90"  class="range-ring" opacity="0.5"/>
+        <circle cx="420" cy="80"  r="160" class="range-ring" opacity="0.3"/>
+
+        <!-- Heat glow (shows near survivor position) -->
+        <circle id="heat-glow" cx="250" cy="260" r="70"
+                fill="url(#heat-grad)" opacity="0"
+                style="transition: cx 0.8s, cy 0.8s, opacity 0.5s"/>
+
+        <!-- Survivor dot -->
+        <circle id="survivor-dot" cx="250" cy="260" r="12"
+                fill="#ef4444" filter="url(#glow-red)"/>
+        <!-- Pulse ring -->
+        <circle id="pulse-ring" cx="250" cy="260" r="12"/>
+
+        <!-- Node 1 — Bottom (USB / laptop) -->
+        <g id="node-1-g" filter="url(#glow)">
+          <circle cx="250" cy="440" r="14" fill="#0d1421" stroke="#00d4ff" stroke-width="2.5"/>
+          <circle cx="250" cy="440" r="6"  fill="#00d4ff"/>
+        </g>
+        <text x="250" y="472" text-anchor="middle"
+              font-family="Space Mono,monospace" font-size="11" fill="#00d4ff">N1</text>
+
+        <!-- Node 2 — Top Left -->
+        <g id="node-2-g" filter="url(#glow)">
+          <circle cx="80" cy="80" r="14" fill="#0d1421" stroke="#7c3aed" stroke-width="2.5"/>
+          <circle cx="80" cy="80" r="6"  fill="#7c3aed"/>
+        </g>
+        <text x="80" y="58" text-anchor="middle"
+              font-family="Space Mono,monospace" font-size="11" fill="#7c3aed">N2</text>
+
+        <!-- Node 3 — Top Right -->
+        <g id="node-3-g" filter="url(#glow)">
+          <circle cx="420" cy="80" r="14" fill="#0d1421" stroke="#10b981" stroke-width="2.5"/>
+          <circle cx="420" cy="80" r="6"  fill="#10b981"/>
+        </g>
+        <text x="420" y="58" text-anchor="middle"
+              font-family="Space Mono,monospace" font-size="11" fill="#10b981">N3</text>
+      </svg>
+    </div>
+
+    <div class="map-label">RF REFLECTION FIELD — TRIANGULAR COVERAGE MAP</div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="panel-right">
+    <div class="panel-title">Node Details</div>
+
+    <div class="node-card" id="card-n1">
+      <div class="node-card-header">
+        <span class="node-card-title" style="color:var(--node1)">▶ NODE 1 — BOTTOM</span>
+        <span class="node-status-pill" id="pill-1">OFFLINE</span>
+      </div>
+      <div class="node-metric"><span class="lbl">RSSI</span><span class="val" id="c-rssi-1">--</span></div>
+      <div class="node-metric"><span class="lbl">Motion</span><span class="val" id="c-mot-1">--</span></div>
+      <div class="node-metric"><span class="lbl">Breathing</span><span class="val" id="c-br-1">--</span></div>
+    </div>
+
+    <div class="node-card" id="card-n2">
+      <div class="node-card-header">
+        <span class="node-card-title" style="color:var(--node2)">▶ NODE 2 — TOP-LEFT</span>
+        <span class="node-status-pill" id="pill-2">OFFLINE</span>
+      </div>
+      <div class="node-metric"><span class="lbl">RSSI</span><span class="val" id="c-rssi-2">--</span></div>
+      <div class="node-metric"><span class="lbl">Motion</span><span class="val" id="c-mot-2">--</span></div>
+      <div class="node-metric"><span class="lbl">Breathing</span><span class="val" id="c-br-2">--</span></div>
+    </div>
+
+    <div class="node-card" id="card-n3">
+      <div class="node-card-header">
+        <span class="node-card-title" style="color:var(--node3)">▶ NODE 3 — TOP-RIGHT</span>
+        <span class="node-status-pill" id="pill-3">OFFLINE</span>
+      </div>
+      <div class="node-metric"><span class="lbl">RSSI</span><span class="val" id="c-rssi-3">--</span></div>
+      <div class="node-metric"><span class="lbl">Motion</span><span class="val" id="c-mot-3">--</span></div>
+      <div class="node-metric"><span class="lbl">Breathing</span><span class="val" id="c-br-3">--</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Node positions in SVG space ───────────────────────────────────────────
+  const NODE_SVG_POS = { 1: [250, 440], 2: [80, 80], 3: [420, 80] };
+
+  // ── WebSocket ─────────────────────────────────────────────────────────────
+  const wsUrl = "ws://localhost:8002";
+  const wsBadge = document.getElementById("ws-badge");
+  const alertBanner = document.getElementById("alert-banner");
+  const presenceCard = document.getElementById("presence-card");
+  const presenceLabel = document.getElementById("presence-label");
+  const triPoly = document.getElementById("tri-poly");
+  const survivorDot = document.getElementById("survivor-dot");
+  const pulseRing = document.getElementById("pulse-ring");
+  const heatGlow = document.getElementById("heat-glow");
+
+  function rssiToSigStrength(rssi) {
+    // Map [-100, -40] dBm → [0,100]%
+    return Math.max(0, Math.min(100, ((rssi + 100) / 60) * 100));
+  }
+
+  function updateNodeCard(n, active, rssi, motion, breathing) {
+    const pill    = document.getElementById(`pill-${n}`);
+    const crssi   = document.getElementById(`c-rssi-${n}`);
+    const cmot    = document.getElementById(`c-mot-${n}`);
+    const cbr     = document.getElementById(`c-br-${n}`);
+    const sigFill = document.getElementById(`sig-${n}`);
+    const rssiEl  = document.getElementById(`rssi-${n}`);
+    const card    = document.getElementById(`card-n${n}`);
+    const colors  = { 1:"var(--node1)", 2:"var(--node2)", 3:"var(--node3)" };
+
+    // Pill
+    pill.textContent = active ? "ONLINE" : "OFFLINE";
+    pill.className   = "node-status-pill" + (active ? " online" : "");
+
+    // Card border
+    card.className = "node-card" + (active ? ` active-n${n}` : "");
+
+    // Values
+    crssi.textContent = `${rssi.toFixed(1)} dBm`;
+    cmot.textContent  = motion.toFixed(3);
+    cbr.textContent   = `${breathing.toFixed(1)} rpm`;
+
+    // Signal bar
+    const pct = rssiToSigStrength(rssi);
+    sigFill.style.width      = `${pct}%`;
+    sigFill.style.background = colors[n];
+    rssiEl.textContent       = `${rssi.toFixed(0)}`;
+
+    // Dim node circle if offline
+    const nodeG = document.getElementById(`node-${n}-g`);
+    if (nodeG) nodeG.style.opacity = active ? "1" : "0.3";
+  }
+
+  function posToSVG(px, py) {
+    // Map [0-1] normalized pos to SVG coords within triangle
+    // Triangle: N1=(250,440), N2=(80,80), N3=(420,80)
+    // Bary-like blend: x=px along 80→420, y=py along 80→440
+    const x = 80 + px * (420 - 80);
+    const y = 80 + py * (440 - 80);
+    return [x, y];
+  }
+
+  function updateUI(data) {
+    const detected    = data.ai_detected;
+    const prob        = data.ai_prob;
+    const activeNodes = data.active_nodes;
+    const nodes       = data.nodes || [];
+    const px          = data.pos_x ?? 0.5;
+    const py          = data.pos_y ?? 0.5;
+    const mode        = data.ai_mode || "—";
+
+    // ── Header
+    document.getElementById("val-nodes").textContent = activeNodes;
+    document.getElementById("val-nodes").style.color =
+      activeNodes === 3 ? "var(--green)" : activeNodes > 0 ? "var(--orange)" : "var(--red)";
+    document.getElementById("mode-badge").textContent = mode.toUpperCase();
+
+    // ── Detection card
+    const pct = (prob * 100).toFixed(1);
+    document.getElementById("val-prob-pct").textContent = `${pct}%`;
+    document.getElementById("conf-bar").style.width = `${prob * 100}%`;
+
+    if (detected) {
+      presenceCard.classList.add("detected");
+      presenceLabel.textContent = "⚠ SURVIVOR";
+      presenceLabel.classList.add("detected");
+      alertBanner.style.display = "block";
+      triPoly.classList.add("detected");
+    } else {
+      presenceCard.classList.remove("detected");
+      presenceLabel.textContent = "NO SURVIVOR";
+      presenceLabel.classList.remove("detected");
+      alertBanner.style.display = "none";
+      triPoly.classList.remove("detected");
+    }
+
+    // ── Fused metrics (average of active nodes)
+    if (nodes.length > 0) {
+      const active = nodes.filter(n => n.active);
+      if (active.length > 0) {
+        const avgRssi  = active.reduce((s,n) => s + n.rssi, 0) / active.length;
+        const maxMot   = Math.max(...active.map(n => n.motion));
+        const avgBr    = active.reduce((s,n) => s + n.breathing, 0) / active.length;
+        document.getElementById("val-rssi").textContent   = `${avgRssi.toFixed(1)} dBm`;
+        document.getElementById("val-motion").textContent = maxMot.toFixed(3);
+        document.getElementById("val-br").textContent     = `${avgBr.toFixed(1)} rpm`;
+      }
+    }
+
+    // ── Node cards
+    nodes.forEach(n => {
+      if (n.node_id >= 1 && n.node_id <= 3) {
+        updateNodeCard(n.node_id, n.active, n.rssi, n.motion, n.breathing);
+      }
+    });
+
+    // ── Survivor position on SVG
+    const [svgX, svgY] = posToSVG(px, py);
+
+    if (detected) {
+      survivorDot.setAttribute("cx", svgX);
+      survivorDot.setAttribute("cy", svgY);
+      survivorDot.classList.add("visible");
+
+      pulseRing.setAttribute("cx", svgX);
+      pulseRing.setAttribute("cy", svgY);
+      pulseRing.classList.add("visible");
+
+      heatGlow.setAttribute("cx", svgX);
+      heatGlow.setAttribute("cy", svgY);
+      heatGlow.style.opacity = (prob * 0.8).toFixed(2);
+    } else {
+      survivorDot.classList.remove("visible");
+      pulseRing.classList.remove("visible");
+      heatGlow.style.opacity = "0";
+    }
+  }
+
+  function startWS() {
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      wsBadge.textContent = "ONLINE";
+      wsBadge.classList.add("online");
+      console.log("[WS] Connected to backend");
+    };
+
+    ws.onclose = () => {
+      wsBadge.textContent = "OFFLINE";
+      wsBadge.classList.remove("online");
+      setTimeout(startWS, 2000);
+    };
+
+    ws.onerror = () => {};
+
+    ws.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === "rescue_ai") updateUI(data);
+      } catch(err) { console.error("[WS] parse error", err); }
+    };
+  }
+
+  startWS();
+</script>
+</body>
+</html>
