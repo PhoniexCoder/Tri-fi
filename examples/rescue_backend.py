@@ -17,6 +17,9 @@ import sys
 import threading
 import time
 import numpy as np
+import torch
+import torch.nn as nn
+import torchvision.models as models
 
 # Add project root for imports
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +33,6 @@ from csi_preprocessing import preprocess_realtime_csi, get_breathing_info
 # Suppress deprecation warnings
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-import websockets
 from websockets.server import serve
 
 
@@ -40,9 +42,9 @@ UDP_PORT        = 4444
 WS_PORT         = 8002
 BROADCAST_HZ    = 5
 CSI_BUFFER_SIZE = 100     # frames before ML inference (~3s at 33Hz)
-CSI_ML_WEIGHT   = 0.6     # CSI-Bench model weight in blend
-TRI_ML_WEIGHT   = 0.4     # Triangular heuristic weight
-MIN_CONSENSUS   = 2       # minimum nodes detecting for triangle consensus
+CSI_ML_WEIGHT   = 1.0     # Use PyTorch model.pth exclusively
+TRI_ML_WEIGHT   = 0.0     # Disable legacy Triangular model
+MIN_CONSENSUS   = 1       # Trigger consensus on just 1 node for outside triangle accuracy
 
 # Triangle node positions (fixed layout)
 NODE_POSITIONS = {
@@ -67,6 +69,7 @@ class CSINodeInference:
         # Per-node results
         self._ml_prob = {1: 0.0, 2: 0.0, 3: 0.0}
         self._ml_detected = {1: False, 2: False, 3: False}
+        self._prob_hist = {i: collections.deque(maxlen=5) for i in [1, 2, 3]}
         self._breathing = {i: {"detected": False, "bpm": 0.0, "band_power": 0.0} for i in [1, 2, 3]}
 
         # Smoothing (EMA)
@@ -74,21 +77,30 @@ class CSINodeInference:
         self._ema_alpha = 0.3
 
         self._model = None
-        self._scaler = None
+        self._model_mtime = 0
         self._load_model()
 
     def _load_model(self):
-        model_path = os.path.join(PROJECT_ROOT, "model.pkl")
-        scaler_path = os.path.join(PROJECT_ROOT, "scaler.pkl")
+        model_path = os.path.join(PROJECT_ROOT, "model.pth")
         try:
-            import joblib
-            if os.path.exists(model_path) and os.path.exists(scaler_path):
-                self._model = joblib.load(model_path)
-                self._scaler = joblib.load(scaler_path)
-                print(f"[CSI-ML] Model loaded: {model_path}")
+            if os.path.exists(model_path):
+                # Reconstruct ResNet-18 architecture with 1-channel input
+                class CSICNN(nn.Module):
+                    def __init__(self):
+                        super().__init__()
+                        self.net = models.resnet18(num_classes=6)
+                        self.net.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+                    def forward(self, x):
+                        return self.net(x)
+                
+                self._model = CSICNN()
+                state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
+                self._model.load_state_dict(state_dict)
+                self._model.eval()
+                self._model_mtime = os.path.getmtime(model_path)
+                print(f"[CSI-ML] ⚡ PyTorch Torchvision ResNet-18 Model hot-loaded: {model_path}")
             else:
-                print(f"[CSI-ML] WARNING: model.pkl or scaler.pkl not found")
-                print(f"[CSI-ML]   Run: python train_csi_model.py")
+                print(f"[CSI-ML] WARNING: model.pth not found. Ensure PyTorch model exists.")
         except Exception as e:
             print(f"[CSI-ML] Load failed: {e}")
 
@@ -96,33 +108,79 @@ class CSINodeInference:
         """Add one CSI amplitude vector (n_subcarriers,) to buffer."""
         if node_id not in self._buffers:
             return
-        self._buffers[node_id].append(amplitude.astype(np.float32))
+        amp = amplitude.astype(np.float32)
+        buf = self._buffers[node_id]
+        if len(buf) > 0:
+            target_len = len(buf[0])
+            if len(amp) != target_len:
+                if len(amp) > target_len:
+                    amp = amp[:target_len]
+                else:
+                    amp = np.pad(amp, (0, target_len - len(amp)))
+        buf.append(amp)
 
-        if len(self._buffers[node_id]) >= self._buffer_size:
+        if len(buf) >= self._buffer_size:
             self._run_inference(node_id)
 
     def _run_inference(self, node_id: int):
         """Run ML model + breathing detection on buffered data."""
+        # ── Hackathon Auto-Hot-Reload ──
+        model_path = os.path.join(PROJECT_ROOT, "model.pth")
+        if os.path.exists(model_path):
+            current_mtime = os.path.getmtime(model_path)
+            if current_mtime > self._model_mtime:
+                print(f"\n[HOT RELOAD] ⚡ Detected new model.pth! Hot-swapping neural net seamlessly...")
+                self._load_model()
+                
         buf = list(self._buffers[node_id])
         amp_matrix = np.stack(buf, axis=1)  # (n_sub, buffer_size)
 
         # ML prediction
         if self._model is not None:
             try:
-                features = preprocess_realtime_csi(
-                    amp_matrix, self._scaler, window_size=self._buffer_size
-                )
-                if len(features) > 0:
-                    proba = self._model.predict_proba(features)
-                    raw_prob = float(np.mean(proba[:, 1]))
+                # Normalize raw amplitude frame matrix for CNN input
+                matrix_mean = np.mean(amp_matrix)
+                matrix_std = np.std(amp_matrix) + 1e-6
+                normed_matrix = (amp_matrix - matrix_mean) / matrix_std
+                
+                # Torch expects [Batch, Channels, Height, Width] => [1, 1, 64, 100]
+                tensor_input = torch.tensor(normed_matrix, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+                
+                with torch.no_grad():
+                    out = self._model(tensor_input)
+                    probs = torch.softmax(out, dim=1).numpy()[0]
+                
+                # --- VISUAL DEBUGGER FOR HACKATHON ---
+                if node_id == 1:
+                    import time
+                    if not hasattr(self, '_last_print'): self._last_print = 0
+                    if time.time() - self._last_print > 2.0:
+                        self._last_print = time.time()
+                        print("\n" + "═"*50)
+                        print(f"📡 RAW CSI ARRAY:  Shape {amp_matrix.shape}")
+                        print(f"💧 SUBCARRIER [0]: {np.round(amp_matrix[0, -5:], 2)}")
+                        print(f"🧠 PYTORCH PROBS:  Class 0={probs[0]:.3f} | Class 1={probs[1]:.3f} | Class 2={probs[2]:.3f} | Class 3={probs[3]:.3f}")
+                        print(f"🎯 PREDICTION:     Label {np.argmax(probs)} ({probs[np.argmax(probs)]*100:.1f}%)")
+                        print("═"*50 + "\n")
+                # -------------------------------------
+                
+                # Assume Class 0 is "Empty", all other classes [1-5] correspond to Activity/Presence
+                empty_prob = probs[0]
+                presence_prob = 1.0 - empty_prob
+                
+                # Class index maps to Number of People (e.g. Class 2 = 2 people)
+                n_people = int(np.argmax(probs))
+                
+                if not hasattr(self, '_survivors_hist'):
+                    self._survivors_hist = {1: collections.deque(maxlen=10), 2: collections.deque(maxlen=10), 3: collections.deque(maxlen=10)}
+                self._survivors_hist[node_id].append(n_people)
 
-                    # EMA smoothing
-                    self._smooth_prob[node_id] = (
-                        self._ema_alpha * raw_prob +
-                        (1 - self._ema_alpha) * self._smooth_prob[node_id]
-                    )
+                self._prob_hist[node_id].append(float(presence_prob))
+
+                if len(self._prob_hist[node_id]) > 0:
+                    self._smooth_prob[node_id] = float(np.mean(self._prob_hist[node_id]))
                     self._ml_prob[node_id] = self._smooth_prob[node_id]
-                    self._ml_detected[node_id] = self._ml_prob[node_id] > 0.55
+                    self._ml_detected[node_id] = self._ml_prob[node_id] > 0.85  # Cranked threshold up! Must be very confident to trip node
             except Exception as e:
                 print(f"[CSI-ML] Inference error node={node_id} shape={amp_matrix.shape}: {e}")
 
@@ -148,6 +206,12 @@ class CSINodeInference:
 
     def get_node_detected(self, node_id: int) -> bool:
         return self._ml_detected.get(node_id, False)
+
+    def get_node_survivors(self, node_id: int) -> int:
+        if hasattr(self, '_survivors_hist') and len(self._survivors_hist[node_id]) > 0:
+            # majority vote
+            return max(set(self._survivors_hist[node_id]), key=self._survivors_hist[node_id].count)
+        return 0
 
     def get_breathing(self, node_id: int) -> dict:
         return self._breathing.get(node_id, {"detected": False, "bpm": 0.0, "band_power": 0.0})
@@ -176,17 +240,20 @@ def triangle_consensus(csi_node: CSINodeInference) -> dict:
     detections = {i: csi_node.get_node_detected(i) for i in [1, 2, 3]}
     probs = {i: csi_node.get_node_prob(i) for i in [1, 2, 3]}
     n_detecting = sum(1 for v in detections.values() if v)
+    max_prob = max(probs.values()) if probs else 0.0
 
-    if n_detecting >= MIN_CONSENSUS:
+    if n_detecting == 3:
         status = "INSIDE"
         consensus_detected = True
-        # Confidence = weighted average of detecting nodes
-        detecting_probs = [p for i, p in probs.items() if detections[i]]
-        consensus_prob = np.mean(detecting_probs)
-    elif n_detecting == 1:
-        status = "EDGE"
-        consensus_detected = False  # Not confirmed
-        consensus_prob = max(probs.values()) * 0.4  # reduced confidence
+        consensus_prob = max_prob
+    elif n_detecting == 2:
+        status = "BOUNDARY"
+        consensus_detected = False  # Strictly reject if not seen by all 3 nodes
+        consensus_prob = 0.0
+    elif n_detecting <= 1:
+        status = "OUT OF RANGE"
+        consensus_detected = False
+        consensus_prob = 0.0
     else:
         status = "CLEAR"
         consensus_detected = False
@@ -367,8 +434,8 @@ async def broadcast_loop():
             node_data.append({
                 "node_id":      i,
                 "rssi":         tri_result["node_rssi"].get(i, -100),
-                "motion":       tri_result["node_motion"].get(i, 0.0),
-                "breathing_bpm": breath["bpm"],
+                "motion":       round(_node_vitals[i]["motion"], 4),
+                "breathing":    breath["bpm"],
                 "breathing_detected": breath["detected"],
                 "csi_ml_prob":  round(csi_node.get_node_prob(i), 4),
                 "csi_detected": csi_node.get_node_detected(i),
@@ -376,6 +443,34 @@ async def broadcast_loop():
                 "pos_x":        NODE_POSITIONS[i][0],
                 "pos_y":        NODE_POSITIONS[i][1],
             })
+
+        # Determine target survivor count from PyTorch output
+        target_survivors = 0
+        if combined_detected:
+            s_list = []
+            for i in [1, 2, 3]:
+                if csi_node.get_node_detected(i):
+                     s_list.append(csi_node.get_node_survivors(i))
+            if s_list:
+                target_survivors = max(s_list)
+            
+            # Floor to 1 if detection triggered but max class evaluates to 0
+            if target_survivors == 0:
+                target_survivors = 1
+        
+        # Format multiple cluster coordinates for the UI radar
+        survivors_list = []
+        if combined_detected and target_survivors > 0:
+            if target_survivors == 1:
+                survivors_list.append({"x": round(smooth_x, 4), "y": round(smooth_y, 4), "intensity": round(combined_prob, 4)})
+            else:
+                radius = 0.08
+                for i in range(target_survivors):
+                    angle = (2 * np.pi * i) / target_survivors
+                    sx = float(np.clip(smooth_x + radius * np.cos(angle), 0.0, 1.0))
+                    sy = float(np.clip(smooth_y + radius * np.sin(angle), 0.0, 1.0))
+                    intensity_variance = combined_prob * (1.0 - 0.15 * (i / target_survivors))
+                    survivors_list.append({"x": round(sx, 4), "y": round(sy, 4), "intensity": round(intensity_variance, 4)})
 
         # Heatmap data (send every 2 seconds to reduce bandwidth)
         heatmap_counter += 1
@@ -386,7 +481,7 @@ async def broadcast_loop():
             "type":              "rescue_ai",
             "ai_detected":       combined_detected,
             "ai_prob":           round(combined_prob, 4),
-            "ai_mode":           "csi_rf+breathing+triangular" if csi_node.model_loaded else tri_result["ml_mode"],
+            "ai_mode":           "resnet18 (6-class)",
             "consensus_status":  consensus["consensus_status"],
             "n_detecting":       consensus["n_detecting"],
             "csi_ml_prob":       round(csi_prob, 4),
@@ -394,6 +489,8 @@ async def broadcast_loop():
             "active_nodes":      tri_result["active_nodes"],
             "pos_x":             round(smooth_x, 4),
             "pos_y":             round(smooth_y, 4),
+            "survivors":         target_survivors,
+            "survivors_list":    survivors_list,
             "nodes":             node_data,
             # Legacy compatibility
             "raw_rssi":          tri_result["node_rssi"].get(1, -100),
