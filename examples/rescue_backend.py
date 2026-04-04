@@ -78,31 +78,59 @@ class CSINodeInference:
 
         self._model = None
         self._model_mtime = 0
+        self._model_path = None
+        self._binary_model = False  # True when using custom_presence_model.pth (2-class)
         self._load_model()
 
     def _load_model(self):
-        model_path = os.path.join(PROJECT_ROOT, "model.pth")
+        """Load either the binary presence model or the legacy 6-class model.
+
+        Preference order:
+          1) custom_presence_model.pth  → 2-class (no human / human present)
+          2) model.pth                  → 6-class legacy backend model
+        """
+
+        binary_path = os.path.join(PROJECT_ROOT, "custom_presence_model.pth")
+        legacy_path = os.path.join(PROJECT_ROOT, "model.pth")
+
+        # Decide which path to use
+        if os.path.exists(binary_path):
+            target_path = binary_path
+            num_classes = 2
+            using_binary = True
+        elif os.path.exists(legacy_path):
+            target_path = legacy_path
+            num_classes = 6
+            using_binary = False
+        else:
+            print("[CSI-ML] WARNING: Neither custom_presence_model.pth nor model.pth found.")
+            self._model = None
+            self._model_path = None
+            self._binary_model = False
+            return
+
         try:
-            if os.path.exists(model_path):
-                # Reconstruct ResNet-18 architecture with 1-channel input
-                class CSICNN(nn.Module):
-                    def __init__(self):
-                        super().__init__()
-                        self.net = models.resnet18(num_classes=6)
-                        self.net.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-                    def forward(self, x):
-                        return self.net(x)
-                
-                self._model = CSICNN()
-                state_dict = torch.load(model_path, map_location='cpu', weights_only=False)
-                self._model.load_state_dict(state_dict)
-                self._model.eval()
-                self._model_mtime = os.path.getmtime(model_path)
-                print(f"[CSI-ML] ⚡ PyTorch Torchvision ResNet-18 Model hot-loaded: {model_path}")
-            else:
-                print(f"[CSI-ML] WARNING: model.pth not found. Ensure PyTorch model exists.")
+            # Reconstruct ResNet-18 architecture with 1-channel input
+            class CSICNN(nn.Module):
+                def __init__(self, num_classes: int):
+                    super().__init__()
+                    self.net = models.resnet18(num_classes=num_classes)
+                    self.net.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+                def forward(self, x):
+                    return self.net(x)
+
+            self._model = CSICNN(num_classes=num_classes)
+            state_dict = torch.load(target_path, map_location='cpu', weights_only=False)
+            self._model.load_state_dict(state_dict)
+            self._model.eval()
+            self._model_mtime = os.path.getmtime(target_path)
+            self._model_path = target_path
+            self._binary_model = using_binary
+            mode = "2-class binary (custom_presence_model.pth)" if using_binary else "6-class legacy (model.pth)"
+            print(f"[CSI-ML] ⚡ PyTorch ResNet-18 Model hot-loaded: {target_path} ({mode})")
         except Exception as e:
-            print(f"[CSI-ML] Load failed: {e}")
+            print(f"[CSI-ML] Load failed from {target_path}: {e}")
+            self._model = None
 
     def push_frame(self, node_id: int, amplitude: np.ndarray):
         """Add one CSI amplitude vector (n_subcarriers,) to buffer."""
@@ -122,11 +150,15 @@ class CSINodeInference:
     def _run_inference(self, node_id: int):
         """Run ML model + breathing detection on buffered data."""
         # ── Hackathon Auto-Hot-Reload ──
-        model_path = os.path.join(PROJECT_ROOT, "model.pth")
-        if os.path.exists(model_path):
-            current_mtime = os.path.getmtime(model_path)
-            if current_mtime > self._model_mtime:
-                print(f"\n[HOT RELOAD] ⚡ Detected new model.pth! Hot-swapping neural net seamlessly...")
+        # Prefer binary presence model if available; otherwise fall back to legacy.
+        binary_path = os.path.join(PROJECT_ROOT, "custom_presence_model.pth")
+        legacy_path = os.path.join(PROJECT_ROOT, "model.pth")
+        preferred_path = binary_path if os.path.exists(binary_path) else legacy_path
+
+        if preferred_path and os.path.exists(preferred_path):
+            current_mtime = os.path.getmtime(preferred_path)
+            if preferred_path != self._model_path or current_mtime > self._model_mtime:
+                print(f"\n[HOT RELOAD] ⚡ Detected new CSI model at {preferred_path}! Hot-swapping neural net...")
                 self._load_model()
                 
         buf = list(self._buffers[node_id])
@@ -156,21 +188,27 @@ class CSINodeInference:
                         print("\n" + "═"*50)
                         print(f"📡 RAW CSI ARRAY:  Shape {amp_matrix.shape}")
                         print(f"💧 SUBCARRIER [0]: {np.round(amp_matrix[0, -5:], 2)}")
-                        print(f"🧠 PYTORCH PROBS:  Class 0={probs[0]:.3f} | Class 1={probs[1]:.3f} | Class 2={probs[2]:.3f} | Class 3={probs[3]:.3f}")
+                        probs_str = " | ".join([f"Class {i}={p:.3f}" for i, p in enumerate(probs)])
+                        print(f"🧠 PYTORCH PROBS:  {probs_str}")
                         print(f"🎯 PREDICTION:     Label {np.argmax(probs)} ({probs[np.argmax(probs)]*100:.1f}%)")
                         print("═"*50 + "\n")
                 # -------------------------------------
                 
-                # Assume Class 0 is "Empty". With the current training
-                # pipeline, all non-zero classes (1-5) are generic
-                # "human present" rather than precise counts.
-                empty_prob = probs[0]
-                presence_prob = 1.0 - empty_prob
-
-                # Map network output to survivor count used by the UI:
-                #   0 → no human, any non-zero class → at least one human.
-                argmax_class = int(np.argmax(probs))
-                n_people = 0 if argmax_class == 0 else 1
+                # Probability semantics differ for binary vs legacy models.
+                # Binary (custom_presence_model.pth):
+                #   Class 0 = no human, Class 1 = human present
+                # Legacy 6-class (model.pth):
+                #   Class 0 = empty, 1-5 = generic human-present classes.
+                if self._binary_model:
+                    empty_prob = float(probs[0])
+                    presence_prob = float(probs[1])
+                    argmax_class = int(np.argmax(probs))
+                    n_people = 0 if argmax_class == 0 else 1
+                else:
+                    empty_prob = float(probs[0])
+                    presence_prob = float(1.0 - empty_prob)
+                    argmax_class = int(np.argmax(probs))
+                    n_people = 0 if argmax_class == 0 else 1
                 
                 if not hasattr(self, '_survivors_hist'):
                     self._survivors_hist = {1: collections.deque(maxlen=10), 2: collections.deque(maxlen=10), 3: collections.deque(maxlen=10)}
@@ -478,11 +516,13 @@ async def broadcast_loop():
         include_heatmap = (heatmap_counter % (BROADCAST_HZ * 2) == 0)
         heatmap = generate_heatmap_data(consensus["node_probs"]) if include_heatmap else None
 
+        ai_mode = "resnet18 (binary custom_presence_model)" if getattr(csi_node, "_binary_model", False) else "resnet18 (6-class)"
+
         payload = {
             "type":              "rescue_ai",
             "ai_detected":       combined_detected,
             "ai_prob":           round(combined_prob, 4),
-            "ai_mode":           "resnet18 (6-class)",
+            "ai_mode":           ai_mode,
             "consensus_status":  consensus["consensus_status"],
             "n_detecting":       consensus["n_detecting"],
             "csi_ml_prob":       round(csi_prob, 4),
