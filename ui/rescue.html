@@ -7,20 +7,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-deep:    #070b12;
-      --bg-card:    #0d1421;
+      /* Professional, muted dark theme */
+      --bg-deep:    #050713;
+      --bg-card:    #0b1020;
       --bg-panel:   #111827;
-      --border:     #1e2d45;
-      --accent:     #00d4ff;
-      --accent2:    #7c3aed;
+      --border:     #1f2937;
+      --accent:     #3b82f6;   /* primary brand blue */
+      --accent2:    #6366f1;   /* secondary indigo */
       --green:      #10b981;
       --red:        #ef4444;
       --orange:     #f59e0b;
-      --text:       #e2e8f0;
-      --muted:      #64748b;
-      --node1:      #00d4ff;
-      --node2:      #7c3aed;
-      --node3:      #10b981;
+      --text:       #e5e7eb;
+      --muted:      #6b7280;
+      /* Node colors slightly toned down but distinct */
+      --node1:      #38bdf8;
+      --node2:      #a855f7;
+      --node3:      #22c55e;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -44,8 +46,8 @@
     .logo { display: flex; align-items: center; gap: 12px; }
     .logo-icon {
       width: 36px; height: 36px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border-radius: 8px;
+      background: radial-gradient(circle at 30% 30%, var(--accent), var(--accent2));
+      border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
       font-size: 18px;
     }
@@ -58,12 +60,12 @@
 
     .header-right { display: flex; align-items: center; gap: 16px; }
     .ws-badge {
-      padding: 6px 14px; border-radius: 20px; font-size: 12px;
+      padding: 6px 14px; border-radius: 999px; font-size: 12px;
       font-family: 'Space Mono', monospace; font-weight: 700;
-      background: var(--red); color: white;
+      background: #b91c1c; color: white;
       transition: background 0.3s;
     }
-    .ws-badge.online { background: var(--green); }
+    .ws-badge.online { background: #065f46; }
     .node-count {
       font-family: 'Space Mono', monospace; font-size: 13px;
       color: var(--muted);
@@ -128,6 +130,32 @@
       height: 100%; border-radius: 4px;
       background: linear-gradient(90deg, var(--accent2), var(--red));
       transition: width 0.5s ease;
+    }
+
+    /* Detection summary grid */
+    #summary-grid {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 14px;
+      text-align: left;
+    }
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .summary-label {
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+    }
+    .summary-value {
+      font-size: 13px;
+      font-family: 'Space Mono', monospace;
+      color: var(--text);
     }
 
     /* Metric rows */
@@ -335,6 +363,24 @@
         </div>
         <div class="bar-track">
           <div class="bar-fill" id="conf-bar" style="width:0%"></div>
+        </div>
+      </div>
+      <div id="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">Mode</div>
+          <div class="summary-value" id="summary-mode">--</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Survivors</div>
+          <div class="summary-value" id="summary-survivors">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">CSI Model</div>
+          <div class="summary-value" id="summary-csi-prob">--%</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Triangle</div>
+          <div class="summary-value" id="summary-tri-prob">--%</div>
         </div>
       </div>
     </div>
@@ -591,6 +637,18 @@
     document.getElementById("conf-bar").style.width = `${prob * 100}%`;
 
     const survivorsCount = data.survivors || 0;
+
+    // Detection summary grid values
+    const csiProbPct = (data.csi_ml_prob * 100).toFixed(1);
+    const triProbPct = (data.tri_prob * 100).toFixed(1);
+    const modeEl     = document.getElementById("summary-mode");
+    const survEl     = document.getElementById("summary-survivors");
+    const csiEl      = document.getElementById("summary-csi-prob");
+    const triEl      = document.getElementById("summary-tri-prob");
+    if (modeEl)  modeEl.textContent  = mode.toUpperCase();
+    if (survEl)  survEl.textContent  = detected ? survivorsCount : 0;
+    if (csiEl)   csiEl.textContent   = `${csiProbPct}%`;
+    if (triEl)   triEl.textContent   = `${triProbPct}%`;
     
     if (detected) {
       presenceCard.classList.add("detected");
