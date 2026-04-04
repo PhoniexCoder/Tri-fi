@@ -246,20 +246,16 @@ def triangle_consensus(csi_node: CSINodeInference) -> dict:
     n_detecting = sum(1 for v in detections.values() if v)
     max_prob = max(probs.values()) if probs else 0.0
 
-    if n_detecting == 3:
-        status = "INSIDE"
+    # More operator-friendly logic:
+    # - any node with strong detection should surface as a survivor,
+    #   even if only one node currently sees the person clearly.
+    # - we still distinguish EDGE vs INSIDE for the status label.
+    if n_detecting >= 1:
+        status = "INSIDE" if n_detecting >= 2 else "EDGE"
         consensus_detected = True
         consensus_prob = max_prob
-    elif n_detecting == 2:
-        status = "BOUNDARY"
-        consensus_detected = False  # Strictly reject if not seen by all 3 nodes
-        consensus_prob = 0.0
-    elif n_detecting <= 1:
-        status = "OUT OF RANGE"
-        consensus_detected = False
-        consensus_prob = 0.0
     else:
-        status = "CLEAR"
+        status = "OUT OF RANGE"
         consensus_detected = False
         consensus_prob = 0.0
 
