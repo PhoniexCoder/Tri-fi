@@ -445,13 +445,20 @@ async def broadcast_loop():
         csi_prob = consensus["consensus_prob"]
         tri_prob = tri_result["ml_prob"]
 
-        # Blend probabilities
+        # Blend probabilities (backend space)
         if csi_node.model_loaded:
             combined_prob = (CSI_ML_WEIGHT * csi_prob) + (TRI_ML_WEIGHT * tri_prob)
         else:
             combined_prob = tri_prob
 
         combined_detected = consensus["consensus_detected"] if csi_node.model_loaded else tri_result["ml_detected"]
+
+        # UI-facing confidence scaling: map the detection threshold (~0.40)
+        # to 0.0 on the progress bar so we don't sit at 100% all the time.
+        if csi_node.model_loaded:
+            display_prob = float(np.clip((combined_prob - 0.40) / 0.60, 0.0, 1.0))
+        else:
+            display_prob = combined_prob
 
         # Smooth position
         raw_pos = (consensus["pos_x"], consensus["pos_y"])
@@ -521,7 +528,7 @@ async def broadcast_loop():
         payload = {
             "type":              "rescue_ai",
             "ai_detected":       combined_detected,
-            "ai_prob":           round(combined_prob, 4),
+            "ai_prob":           round(display_prob, 4),
             "ai_mode":           ai_mode,
             "consensus_status":  consensus["consensus_status"],
             "n_detecting":       consensus["n_detecting"],
