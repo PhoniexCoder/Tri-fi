@@ -151,7 +151,8 @@ def detect_breathing_fft(
     peak_snr = float(breath_power[peak_idx] / (noise_mean + 1e-10))
 
     # Detection: breathing present if band power is significant and SNR is high
-    detected = (band_power > 0.15) and (peak_snr > 3.0)
+    # Field Optimized for ADR-092: 4% band power and 1.1x SNR
+    detected = (band_power > 0.04) and (peak_snr > 1.1)
 
     return {
         "dominant_freq": dominant_freq,

@@ -44,7 +44,8 @@ BROADCAST_HZ      = 5
 CSI_BUFFER_SIZE   = 100     # frames before ML inference (~3s at 33Hz)
 CSI_ML_WEIGHT     = 1.0     # Use PyTorch model.pth exclusively
 TRI_ML_WEIGHT     = 0.0     # Disable legacy Triangular model
-MIN_CONSENSUS     = 1       # Trigger consensus on just 1 node for outside triangle accuracy
+GLOBAL_OP_MODE    = 0       # 0: CSI-ML ONLY, 1: TRIANGULAR ONLY, 2: BLENDED
+MIN_CONSENSUS     = 1       # Require 1 node to agree (Balanced for AI)
 UI_DETECTION_THRESH = 0.60  # Minimum backend probability before UI shows a survivor
 
 # Triangle node positions (fixed layout)
@@ -65,6 +66,8 @@ class CSINodeInference:
 
     def __init__(self, buffer_size=CSI_BUFFER_SIZE):
         self._buffers = {i: collections.deque(maxlen=buffer_size) for i in [1, 2, 3]}
+        self._breathing_buffers = {i: collections.deque(maxlen=400) for i in [1, 2, 3]} # ADR-092: 12sec window
+        self._timestamps = {i: collections.deque(maxlen=100) for i in [1, 2, 3]}      # For Hz estimation
         self._buffer_size = buffer_size
 
         # Per-node results
@@ -76,6 +79,11 @@ class CSINodeInference:
         # Smoothing (EMA)
         self._smooth_prob = {1: 0.0, 2: 0.0, 3: 0.0}
         self._ema_alpha = 0.3
+
+        # Noise Floor Calibration (ADR-072: Noise Gate)
+        self._noise_stds = {1: None, 2: None, 3: None}
+        self._calib_samples = {i: [] for i in [1, 2, 3]}
+        self._calib_required = 80  # ~8 seconds of silence to calibrate
 
         self._model = None
         self._model_mtime = 0
@@ -142,10 +150,24 @@ class CSINodeInference:
         amp = amp[:64]
         if len(amp) < 64:
             amp = np.pad(amp, (0, 64 - len(amp)))
+        
         buf = self._buffers[node_id]
         buf.append(amp)
+        self._breathing_buffers[node_id].append(amp)
+        self._timestamps[node_id].append(time.time())
 
         if len(buf) >= self._buffer_size:
+            # Handle Calibration Phase (ADR-072: Noise Gate)
+            if self._noise_stds[node_id] is None:
+                # Calculate window variance (not just single frame)
+                amp_matrix = np.stack(list(buf), axis=1)
+                self._calib_samples[node_id].append(np.std(amp_matrix))
+                
+                # We need ~15 windows to get a stable baseline
+                if len(self._calib_samples[node_id]) >= 15:
+                    self._noise_stds[node_id] = float(np.median(self._calib_samples[node_id]))
+                    print(f"[CSI-ML] 🎯 Node {node_id} Calibrated! Baseline Baseline Variance: {self._noise_stds[node_id]:.3f}")
+            
             self._run_inference(node_id)
 
     def _run_inference(self, node_id: int):
@@ -171,14 +193,39 @@ class CSINodeInference:
                 # Normalize raw amplitude frame matrix for CNN input
                 matrix_mean = np.mean(amp_matrix)
                 matrix_std = np.std(amp_matrix) + 1e-6
-                normed_matrix = (amp_matrix - matrix_mean) / matrix_std
                 
-                # Torch expects [Batch, Channels, Height, Width] => [1, 1, 64, 100]
+                # --- ADR-072: NOISE GATE (Sensitivity Filter) ---
+                # If window variance is not at least 1% higher than the silent baseline,
+                # we force the result to "Empty" UNLESS the AI is extremely confident.
+                is_gated = False
+                if self._noise_stds[node_id] is not None:
+                    # Ultra-Sensitive threshold: 1.01 (1% bump)
+                    if matrix_std < (self._noise_stds[node_id] * 1.01):
+                        is_gated = True
+                else:
+                    is_gated = True
+                
+                # --- AI OVERRIDE ---
+                # If we haven't even run inference yet, out is None. 
+                # We need to run inference first to see if we should override.
+                normed_matrix = (amp_matrix - matrix_mean) / matrix_std
                 tensor_input = torch.tensor(normed_matrix, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
                 
                 with torch.no_grad():
                     out = self._model(tensor_input)
                     probs = torch.softmax(out, dim=1).numpy()[0]
+                
+                # If the AI is very sure (>95%), we ignore the Noise Gate.
+                # This fixes the "Lockout" when a person is sitting very still.
+                presence_conf = float(probs[1] if self._binary_model else (1.0 - probs[0]))
+                if is_gated and presence_conf > 0.95:
+                    is_gated = False
+                
+                if is_gated:
+                    # Force "Empty"
+                    probs = np.zeros(6 if not self._binary_model else 2, dtype=np.float32)
+                    probs[0] = 1.0
+                # ------------------------------------------------
                 
                 # --- VISUAL DEBUGGER FOR HACKATHON ---
                 if node_id == 1:
@@ -192,6 +239,11 @@ class CSINodeInference:
                         probs_str = " | ".join([f"Class {i}={p:.3f}" for i, p in enumerate(probs)])
                         print(f"🧠 PYTORCH PROBS:  {probs_str}")
                         print(f"🎯 PREDICTION:     Label {np.argmax(probs)} ({probs[np.argmax(probs)]*100:.1f}%)")
+                        if is_gated:
+                            print(f"🛡️ NOISE GATE:     ACTIVE (STD {matrix_std:.2f} < {self._noise_stds[node_id]*1.01 if self._noise_stds[node_id] else 0:.2f})")
+                        else:
+                            flag = "OVERRIDE" if (self._noise_stds[node_id] and matrix_std < self._noise_stds[node_id]*1.01) else "OPEN"
+                            print(f"🔓 NOISE GATE:     {flag} (Human Signal detected)")
                         print("═"*50 + "\n")
                 # -------------------------------------
                 
@@ -224,16 +276,31 @@ class CSINodeInference:
             except Exception as e:
                 print(f"[CSI-ML] Inference error node={node_id} shape={amp_matrix.shape}: {e}")
 
-        # Breathing detection
+        # Breathing detection (Using 400-frame extended window for FFT accuracy)
         try:
-            breath = get_breathing_info(amp_matrix)
-            self._breathing[node_id] = {
-                "detected": breath["detected"],
-                "bpm": round(breath["bpm"], 1),
-                "band_power": round(breath["band_power"], 4),
-            }
+            b_buf = list(self._breathing_buffers[node_id])
+            if len(b_buf) >= 150: # Minimum 4.5s needed for one breath
+                b_matrix = np.stack(b_buf, axis=1)
+                
+                # Estimate Real-time Sample Rate (Hz)
+                ts = list(self._timestamps[node_id])
+                measured_hz = 33.0 # Fallback
+                if len(ts) > 10:
+                    dt = ts[-1] - ts[0]
+                    if dt > 0: measured_hz = (len(ts) - 1) / dt
+                
+                breath = get_breathing_info(b_matrix, sample_rate=measured_hz)
+                self._breathing[node_id] = {
+                    "detected": breath["detected"],
+                    "bpm": round(breath["bpm"], 1),
+                    "band_power": round(breath["band_power"], 4),
+                }
+
+                # Periodic Diagnostics (ADR-092)
+                if node_id == 1 and time.time() % 10 < 0.2:
+                    print(f"📡 [BREATH-DIAG] Node {node_id} | Hz:{measured_hz:.1f} | Power:{breath['band_power']:.3f} | SNR:{breath['peak_snr']:.1f} | DETECTED:{breath['detected']}")
         except Exception as e:
-            print(f"[CSI-ML] Breathing detection error node={node_id} shape={amp_matrix.shape}: {e}")
+            print(f"[CSI-ML] Breathing detection error node={node_id}: {e}")
 
         # Sliding window: clear half buffer
         half = self._buffer_size // 2
@@ -445,12 +512,21 @@ async def broadcast_loop():
         consensus = triangle_consensus(csi_node)
         csi_prob = consensus["consensus_prob"]
         tri_prob = tri_result["ml_prob"]
+        
+        # --- ADR-085: Dynamic Probability Blending ---
+        if GLOBAL_OP_MODE == 0:     # CSI-ML (AI) ONLY
+            m_csi_w, m_tri_w = 1.0, 0.0
+        elif GLOBAL_OP_MODE == 1:   # TRIANGULAR (LEGACY) ONLY
+            m_csi_w, m_tri_w = 0.0, 1.0
+        else:                       # BLENDED (50/50)
+            m_csi_w, m_tri_w = 0.5, 0.5
 
         # Blend probabilities (backend space)
         if csi_node.model_loaded:
-            combined_prob = (CSI_ML_WEIGHT * csi_prob) + (TRI_ML_WEIGHT * tri_prob)
+            combined_prob = (m_csi_w * csi_prob) + (m_tri_w * tri_prob)
         else:
             combined_prob = tri_prob
+        # ----------------------------------------------
 
         # Base detection from model/triangle
         base_detected = consensus["consensus_detected"] if csi_node.model_loaded else tri_result["ml_detected"]
@@ -532,13 +608,20 @@ async def broadcast_loop():
         include_heatmap = (heatmap_counter % (BROADCAST_HZ * 2) == 0)
         heatmap = generate_heatmap_data(consensus["node_probs"]) if include_heatmap else None
 
-        ai_mode = "resnet18 (binary custom_presence_model)" if getattr(csi_node, "_binary_model", False) else "resnet18 (6-class)"
+        # Display current AI mode string for UI info
+        if GLOBAL_OP_MODE == 0:
+            ai_mode = "AI (ResNet18)"
+        elif GLOBAL_OP_MODE == 1:
+            ai_mode = "Legacy (Triangular)"
+        else:
+            ai_mode = "Safety Blend (50/50)"
 
         payload = {
             "type":              "rescue_ai",
             "ai_detected":       combined_detected,
             "ai_prob":           round(display_prob, 4),
             "ai_mode":           ai_mode,
+            "active_op_mode":    GLOBAL_OP_MODE,
             "consensus_status":  consensus["consensus_status"],
             "n_detecting":       consensus["n_detecting"],
             "csi_ml_prob":       round(csi_prob, 4),
@@ -571,10 +654,19 @@ async def broadcast_loop():
 
 
 async def ws_handler(websocket):
+    global GLOBAL_OP_MODE
     connected_clients.add(websocket)
     print(f"[WS] Client connected ({len(connected_clients)} total)")
     try:
-        await websocket.wait_closed()
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                if data.get("type") == "set_op_mode":
+                    mode = int(data.get("mode", 0))
+                    GLOBAL_OP_MODE = mode
+                    print(f"[WS] Operational Mode Switched to: {mode}")
+            except Exception as e:
+                print(f"[WS] Handler msg error: {e}")
     finally:
         connected_clients.discard(websocket)
         print(f"[WS] Client disconnected ({len(connected_clients)} total)")
