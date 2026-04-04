@@ -15,14 +15,17 @@ function posToSvg(px, py) {
 function App() {
   const [connected, setConnected] = useState(false);
   const [payload, setPayload] = useState(null);
+  const wsRef = React.useRef(null);
 
   useEffect(() => {
-    let ws;
     function connect() {
-      ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      
       ws.onopen = () => setConnected(true);
       ws.onclose = () => {
-        setConnected(false);
+        setConnected(true);
+        wsRef.current = null;
         setTimeout(connect, 2000);
       };
       ws.onerror = () => {};
@@ -37,9 +40,15 @@ function App() {
     }
     connect();
     return () => {
-      if (ws) ws.close();
+      if (wsRef.current) wsRef.current.close();
     };
   }, []);
+
+  const changeMode = (m) => {
+    if (wsRef.current && connected) {
+      wsRef.current.send(JSON.stringify({ type: 'set_op_mode', mode: m }));
+    }
+  };
 
   const ui = useMemo(() => {
     if (!payload) return null;
@@ -54,6 +63,7 @@ function App() {
     const csiProb = payload.csi_ml_prob ?? 0;
     const triProb = payload.tri_prob ?? 0;
     const survivorsList = payload.survivors_list ?? [];
+    const anyBreathingDetected = (payload.nodes || []).some(n => n.breathing_detected);
 
     let avgRssi = null;
     let maxMotion = null;
@@ -63,15 +73,14 @@ function App() {
       avgRssi = active.reduce((s, n) => s + n.rssi, 0) / active.length;
       maxMotion = Math.max(...active.map((n) => n.motion));
 
-      // Only treat breathing as valid when the backend breathing
-      // detector has actually fired for that node. This prevents
-      // a constant-looking RPM value when there is no clear
-      // breathing signal.
-      const breathingNodes = active.filter((n) => n.breathing_detected);
-      if (breathingNodes.length > 0) {
+      // SHOWING ANY DATA: If nodes have breathing data, let's show the avg
+      // even if the "detected" flag (strict lock) is not yet true.
+      // This helps field teams see if the system is "near" a lock.
+      const dataNodes = active.filter((n) => n.breathing > 0);
+      if (dataNodes.length > 0) {
         avgBr =
-          breathingNodes.reduce((s, n) => s + n.breathing, 0) /
-          breathingNodes.length;
+          dataNodes.reduce((s, n) => s + n.breathing, 0) /
+          dataNodes.length;
       }
     }
 
@@ -135,29 +144,22 @@ function App() {
           </div>
         </div>
         <div className="header-right">
-          <div className="incident-meta">
-            <div className="incident-label">OP MODE</div>
-            <div className="incident-value">LIVE DEPLOYMENT</div>
+          <div className="header-divider" />
+          <div className="mode-switcher">
+            <button 
+              className={`mode-btn ${payload?.active_op_mode === 0 ? 'active' : ''}`}
+              onClick={() => changeMode(0)}
+            >AI</button>
+            <button 
+              className={`mode-btn ${payload?.active_op_mode === 1 ? 'active' : ''}`}
+              onClick={() => changeMode(1)}
+            >TRI</button>
+            <button 
+              className={`mode-btn ${payload?.active_op_mode === 2 ? 'active' : ''}`}
+              onClick={() => changeMode(2)}
+            >MIX</button>
           </div>
           <div className="header-divider" />
-          <div className="node-count">
-            NODES:{' '}
-            <span
-              id="val-nodes"
-              style={{
-                color: ui
-                  ? ui.activeNodes === 3
-                    ? 'var(--green)'
-                    : ui.activeNodes > 0
-                    ? 'var(--orange)'
-                    : 'var(--red)'
-                  : 'var(--muted)',
-              }}
-            >
-              {ui?.activeNodes ?? 0}
-            </span>{' '}
-            / 3
-          </div>
           <span id="mode-badge">{(ui?.mode ?? 'LOADING...').toUpperCase()}</span>
           <div id="ws-badge" className={`ws-badge ${connected ? 'online' : ''}`}>
             {connected ? 'LINK STABLE' : 'LINK LOST'}
@@ -240,7 +242,7 @@ function App() {
             </div>
             <div className="metric-row">
               <span className="metric-label">Breathing</span>
-              <span className="metric-val" id="val-br">
+              <span className="metric-val" id="val-br" style={{ opacity: ui?.anyBreathingDetected ? 1.0 : 0.6 }}>
                 {ui?.avgBr != null ? `${ui.avgBr.toFixed(1)} rpm` : '-- rpm'}
               </span>
             </div>
@@ -557,8 +559,8 @@ function App() {
                 </div>
                 <div className="node-metric">
                   <span className="lbl">Breathing</span>
-                  <span className="val" id={`c-br-${n}`}>
-                    {breathingDetected ? `${breathing.toFixed(1)} rpm` : '-- rpm'}
+                  <span className="val" id={`c-br-${n}`} style={{ opacity: breathingDetected ? 1.0 : 0.6 }}>
+                    {breathing > 0 ? `${breathing.toFixed(1)} rpm` : '-- rpm'}
                   </span>
                 </div>
               </div>
