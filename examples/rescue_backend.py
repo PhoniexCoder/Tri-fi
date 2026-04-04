@@ -38,13 +38,14 @@ from websockets.server import serve
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-UDP_PORT        = 4444
-WS_PORT         = 8002
-BROADCAST_HZ    = 5
-CSI_BUFFER_SIZE = 100     # frames before ML inference (~3s at 33Hz)
-CSI_ML_WEIGHT   = 1.0     # Use PyTorch model.pth exclusively
-TRI_ML_WEIGHT   = 0.0     # Disable legacy Triangular model
-MIN_CONSENSUS   = 1       # Trigger consensus on just 1 node for outside triangle accuracy
+UDP_PORT          = 4444
+WS_PORT           = 8002
+BROADCAST_HZ      = 5
+CSI_BUFFER_SIZE   = 100     # frames before ML inference (~3s at 33Hz)
+CSI_ML_WEIGHT     = 1.0     # Use PyTorch model.pth exclusively
+TRI_ML_WEIGHT     = 0.0     # Disable legacy Triangular model
+MIN_CONSENSUS     = 1       # Trigger consensus on just 1 node for outside triangle accuracy
+UI_DETECTION_THRESH = 0.60  # Minimum backend probability before UI shows a survivor
 
 # Triangle node positions (fixed layout)
 NODE_POSITIONS = {
@@ -451,14 +452,22 @@ async def broadcast_loop():
         else:
             combined_prob = tri_prob
 
-        combined_detected = consensus["consensus_detected"] if csi_node.model_loaded else tri_result["ml_detected"]
+        # Base detection from model/triangle
+        base_detected = consensus["consensus_detected"] if csi_node.model_loaded else tri_result["ml_detected"]
+
+        # Require a minimum probability before the UI treats this as a
+        # real survivor event. This helps avoid a permanent red dot when
+        # the model output hovers around the threshold.
+        combined_detected = bool(base_detected and combined_prob >= UI_DETECTION_THRESH)
 
         # UI-facing confidence scaling: map the detection threshold (~0.40)
         # to 0.0 on the progress bar so we don't sit at 100% all the time.
-        if csi_node.model_loaded:
+        if csi_node.model_loaded and combined_detected:
             display_prob = float(np.clip((combined_prob - 0.40) / 0.60, 0.0, 1.0))
+        elif csi_node.model_loaded:
+            display_prob = 0.0
         else:
-            display_prob = combined_prob
+            display_prob = combined_prob if combined_detected else 0.0
 
         # Smooth position
         raw_pos = (consensus["pos_x"], consensus["pos_y"])
