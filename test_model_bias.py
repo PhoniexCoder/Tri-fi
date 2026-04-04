@@ -25,12 +25,14 @@ def run_test(model, name, mock_matrix):
         probs = torch.softmax(out, dim=1).numpy()[0]
 
     print(f"--- TEST: {name} ---")
-    # Print probabilities for all 6 classes for full visibility
+    # Print probabilities for all 6 classes for full visibility.
+    # In the current training setup, class 0 = EMPTY, and any
+    # non-zero class (1-5) means HUMAN PRESENT (binary).
     for idx, p in enumerate(probs):
         if idx == 0:
-            label = "Empty/No Human"
+            label = "Empty / No Human"
         else:
-            label = f"Class {idx} (People={idx})"
+            label = f"Human Present (class {idx})"
         print(f"  Class {idx}: {p*100:5.1f}%  -> {label}")
 
     argmax = int(np.argmax(probs))

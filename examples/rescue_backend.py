@@ -164,12 +164,16 @@ class CSINodeInference:
                         print("═"*50 + "\n")
                 # -------------------------------------
                 
-                # Assume Class 0 is "Empty", all other classes [1-5] correspond to Activity/Presence
+                # Assume Class 0 is "Empty". With the current training
+                # pipeline, all non-zero classes (1-5) are generic
+                # "human present" rather than precise counts.
                 empty_prob = probs[0]
                 presence_prob = 1.0 - empty_prob
-                
-                # Class index maps to Number of People (e.g. Class 2 = 2 people)
-                n_people = int(np.argmax(probs))
+
+                # Map network output to survivor count used by the UI:
+                #   0 → no human, any non-zero class → at least one human.
+                argmax_class = int(np.argmax(probs))
+                n_people = 0 if argmax_class == 0 else 1
                 
                 if not hasattr(self, '_survivors_hist'):
                     self._survivors_hist = {1: collections.deque(maxlen=10), 2: collections.deque(maxlen=10), 3: collections.deque(maxlen=10)}
