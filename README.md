@@ -1,19 +1,67 @@
 # π Trifi
 
 <p align="center">
-  <a href="https://x.com/rUv/status/2037556932802761004">
-    <img src="assets/trifi-small-gemini.jpg" alt="Trifi - WiFi DensePose" width="100%">
-  </a>
+    <a href="https://x.com/rUv/status/2037556932802761004">
+        <img src="assets/trifi-small-gemini.jpg" alt="Trifi - WiFi DensePose" width="100%">
+    </a>
 </p>
 
-> **Alpha Software** — This project is under active development. APIs, firmware behavior, and documentation may change. Known limitations:
-> - Multi-node person counting may show identical output regardless of the number of people (#249)
-> - Training pipeline on MM-Fi dataset may plateau at low PCK (#318) — hyperparameter tuning in progress
-> - No pre-trained model weights are provided; training from scratch is required
-> - ESP32-C3 and original ESP32 are not supported (single-core, insufficient for CSI DSP)
-> - Single ESP32 deployments have limited spatial resolution
->
-> Contributions and bug reports welcome at [Issues](https://github.com/ruvnet/Trifi/issues).
+## TRI‑FI — AI‑Driven RF Survivor Detection
+
+This repository powers **TRI‑FI**, an ESP32‑S3 based portable RF sensing system for
+locating trapped survivors in collapsed buildings and rubble using 2.4&nbsp;GHz Wi‑Fi
+signals. Three battery‑powered sensing nodes form a triangular mesh, sending CSI/RSSI
+to a Python backend that runs real‑time AI models and drives a tactical React
+dashboard for NDRF/SDRF and search‑and‑rescue teams.
+
+- **Hardware**: ESP32‑S3 CSI firmware in `firmware/esp32-csi-node`, 10–15&nbsp;m scan
+    radius per triangle, powered from 5&nbsp;V power banks.
+- **Backend**: Python real‑time pipeline in `examples/rescue_backend.py` combining
+    CSI‑based ResNet‑18 presence detection, triangular consensus logic, and breathing
+    estimation.
+- **Frontend**: React/Vite field console in `ui/react-rescue` showing survivor
+    probability, RF coverage triangle, node health, and breathing where detected.
+
+### Quick start — TRI‑FI rescue console
+
+1. **Flash and provision ESP32‑S3 nodes**
+
+     - See `firmware/esp32-csi-node/README.md` for build, flash, and Wi‑Fi
+         provisioning. Nodes must send UDP CSI packets to the host on port `4444`.
+
+2. **Start the Python backend (AI + WebSocket server)**
+
+     ```bash
+     cd examples
+     python rescue_backend.py
+     ```
+
+     This listens for ESP32 CSI on `0.0.0.0:4444` and exposes a WebSocket feed at
+     `ws://localhost:8002` with survivor probability, node vitals, and an RF
+     heatmap.
+
+3. **Start the React tactical UI**
+
+     ```bash
+     cd ui/react-rescue
+     npm install
+     npm run dev
+     ```
+
+     By default Vite serves the console at `http://localhost:5173`, connecting to the
+     backend WebSocket (configurable via `VITE_WS_URL` in `.env.development`).
+
+4. **Models**
+
+     - The backend prefers a binary CSI presence model `custom_presence_model.pth`
+         in the repo root and falls back to the legacy 6‑class `model.pth`.
+     - Breathing information is extracted from CSI in `csi_preprocessing.py` and is
+         surfaced per node to the UI when a clear breathing signal is detected.
+
+> The sections below describe the broader Trifi / WiFi DensePose platform this
+> project builds on (pose estimation, vital signs, edge modules, etc.). For
+> hackathon deployments focused on **survivor detection**, the steps above are
+> usually all you need.
 
 ## **See through walls with WiFi + Ai** ##
 
