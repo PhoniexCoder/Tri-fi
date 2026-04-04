@@ -109,14 +109,11 @@ class CSINodeInference:
         if node_id not in self._buffers:
             return
         amp = amplitude.astype(np.float32)
+        # ── CRITICAL: clamp to 64 subcarriers — must match training data ──
+        amp = amp[:64]
+        if len(amp) < 64:
+            amp = np.pad(amp, (0, 64 - len(amp)))
         buf = self._buffers[node_id]
-        if len(buf) > 0:
-            target_len = len(buf[0])
-            if len(amp) != target_len:
-                if len(amp) > target_len:
-                    amp = amp[:target_len]
-                else:
-                    amp = np.pad(amp, (0, target_len - len(amp)))
         buf.append(amp)
 
         if len(buf) >= self._buffer_size:
@@ -184,7 +181,7 @@ class CSINodeInference:
                 if len(self._prob_hist[node_id]) > 0:
                     self._smooth_prob[node_id] = float(np.mean(self._prob_hist[node_id]))
                     self._ml_prob[node_id] = self._smooth_prob[node_id]
-                    self._ml_detected[node_id] = self._ml_prob[node_id] > 0.85  # Cranked threshold up! Must be very confident to trip node
+                    self._ml_detected[node_id] = self._ml_prob[node_id] > 0.40  # Calibrated to realistic model output range (30-65%)
             except Exception as e:
                 print(f"[CSI-ML] Inference error node={node_id} shape={amp_matrix.shape}: {e}")
 
@@ -246,14 +243,18 @@ def triangle_consensus(csi_node: CSINodeInference) -> dict:
     n_detecting = sum(1 for v in detections.values() if v)
     max_prob = max(probs.values()) if probs else 0.0
 
-    # More operator-friendly logic:
-    # - any node with strong detection should surface as a survivor,
-    #   even if only one node currently sees the person clearly.
-    # - we still distinguish EDGE vs INSIDE for the status label.
-    if n_detecting >= 1:
-        status = "INSIDE" if n_detecting >= 2 else "EDGE"
+    if n_detecting == 3:
+        status = "INSIDE"
         consensus_detected = True
-        consensus_prob = max_prob
+        consensus_prob = max_prob                    # Full confidence: all 3 nodes agree
+    elif n_detecting == 2:
+        status = "INSIDE"
+        consensus_detected = True
+        consensus_prob = max_prob * 0.65             # 2 nodes: scaled down visibly
+    elif n_detecting == 1:
+        status = "EDGE"
+        consensus_detected = True
+        consensus_prob = max_prob * 0.35             # 1 node: low confidence
     else:
         status = "OUT OF RANGE"
         consensus_detected = False
