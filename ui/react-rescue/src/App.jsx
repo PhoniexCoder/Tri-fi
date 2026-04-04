@@ -62,7 +62,17 @@ function App() {
     if (active.length > 0) {
       avgRssi = active.reduce((s, n) => s + n.rssi, 0) / active.length;
       maxMotion = Math.max(...active.map((n) => n.motion));
-      avgBr = active.reduce((s, n) => s + n.breathing, 0) / active.length;
+
+      // Only treat breathing as valid when the backend breathing
+      // detector has actually fired for that node. This prevents
+      // a constant-looking RPM value when there is no clear
+      // breathing signal.
+      const breathingNodes = active.filter((n) => n.breathing_detected);
+      if (breathingNodes.length > 0) {
+        avgBr =
+          breathingNodes.reduce((s, n) => s + n.breathing, 0) /
+          breathingNodes.length;
+      }
     }
 
     return {
@@ -503,6 +513,7 @@ function App() {
             const rssi = node?.rssi ?? -100;
             const motion = node?.motion ?? 0;
             const breathing = node?.breathing ?? 0;
+            const breathingDetected = node?.breathing_detected ?? false;
             return (
               <div
                 key={n}
@@ -547,7 +558,7 @@ function App() {
                 <div className="node-metric">
                   <span className="lbl">Breathing</span>
                   <span className="val" id={`c-br-${n}`}>
-                    {breathing.toFixed(1)} rpm
+                    {breathingDetected ? `${breathing.toFixed(1)} rpm` : '-- rpm'}
                   </span>
                 </div>
               </div>
