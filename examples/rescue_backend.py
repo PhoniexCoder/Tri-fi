@@ -219,7 +219,7 @@ class CSINodeInference:
                 if len(self._prob_hist[node_id]) > 0:
                     self._smooth_prob[node_id] = float(np.mean(self._prob_hist[node_id]))
                     self._ml_prob[node_id] = self._smooth_prob[node_id]
-                    self._ml_detected[node_id] = self._ml_prob[node_id] > 0.37  # Calibrated to realistic model output range (30-65%)
+                    self._ml_detected[node_id] = self._ml_prob[node_id] > 0.45  # Calibrated to realistic model output range (30-65%)
             except Exception as e:
                 print(f"[CSI-ML] Inference error node={node_id} shape={amp_matrix.shape}: {e}")
 
