@@ -46,7 +46,7 @@ CSI_ML_WEIGHT     = 1.0     # Use PyTorch model.pth exclusively
 TRI_ML_WEIGHT     = 0.0     # Disable legacy Triangular model
 GLOBAL_OP_MODE    = 0       # 0: CSI-ML ONLY, 1: TRIANGULAR ONLY, 2: BLENDED
 MIN_CONSENSUS     = 1       # Require 1 node to agree (Balanced for AI)
-UI_DETECTION_THRESH = 0.60  # Minimum backend probability before UI shows a survivor
+UI_DETECTION_THRESH = 0.30  # Minimum backend probability before UI shows a survivor
 
 # Triangle node positions (fixed layout)
 NODE_POSITIONS = {
@@ -356,11 +356,11 @@ def triangle_consensus(csi_node: CSINodeInference) -> dict:
     elif n_detecting == 2:
         status = "INSIDE"
         consensus_detected = True
-        consensus_prob = max_prob * 0.65             # 2 nodes: scaled down visibly
+        consensus_prob = max_prob * 0.95             # 2 nodes: High confidence (ADR-095)
     elif n_detecting == 1:
         status = "EDGE"
         consensus_detected = True
-        consensus_prob = max_prob * 0.35             # 1 node: low confidence
+        consensus_prob = max_prob * 0.85             # 1 node: Significant confidence (ADR-095)
     else:
         status = "OUT OF RANGE"
         consensus_detected = False
