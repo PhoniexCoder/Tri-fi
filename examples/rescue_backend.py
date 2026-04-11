@@ -55,6 +55,19 @@ NODE_POSITIONS = {
     3: (0.5, 1.0),
 }
 
+# --- Rescuer System State ---
+_rescuer_state = {
+    "ip": None,
+    "active": False,
+    "confirmed": False,
+    "pos_x": 0.5,
+    "pos_y": 0.5,
+    "last_seen": 0,
+    "confirmed_pos": None,
+    "rssi": {1: -95, 2: -95, 3: -95},
+    "rssi_ts": {1: 0, 2: 0, 3: 0}
+}
+
 
 # ── CSI Amplitude Buffer + ML Inference ──────────────────────────────────────
 
@@ -128,8 +141,16 @@ class CSINodeInference:
                 def forward(self, x):
                     return self.net(x)
 
-            self._model = CSICNN(num_classes=num_classes)
             state_dict = torch.load(target_path, map_location='cpu', weights_only=False)
+            
+            # --- ADR-102: DYNAMIC CLASS DETECTION ---
+            # Inspect the final fully connected layer weights to see how many classes we trained for.
+            if 'net.fc.weight' in state_dict:
+                num_classes = state_dict['net.fc.weight'].shape[0]
+            elif 'fc.weight' in state_dict:
+                num_classes = state_dict['fc.weight'].shape[0]
+            
+            self._model = CSICNN(num_classes=num_classes)
             self._model.load_state_dict(state_dict)
             self._model.eval()
             self._model_mtime = os.path.getmtime(target_path)
@@ -252,16 +273,20 @@ class CSINodeInference:
                 #   Class 0 = no human, Class 1 = human present
                 # Legacy 6-class (model.pth):
                 #   Class 0 = empty, 1-5 = generic human-present classes.
-                if self._binary_model:
-                    empty_prob = float(probs[0])
-                    presence_prob = float(probs[1])
-                    argmax_class = int(np.argmax(probs))
-                    n_people = 0 if argmax_class == 0 else 1
+                # --- Survivor Count Mapping (ADR-105) ---
+                # Class 0: Empty
+                # Class 2: 2 Persons
+                # Labels 1, 3, 4, 5: 1 Person (in various zones)
+                empty_prob = float(probs[0])
+                presence_prob = float(1.0 - empty_prob)
+                argmax_class = int(np.argmax(probs))
+                
+                if argmax_class == 0:
+                    n_people = 0
+                elif argmax_class == 2:
+                    n_people = 2
                 else:
-                    empty_prob = float(probs[0])
-                    presence_prob = float(1.0 - empty_prob)
-                    argmax_class = int(np.argmax(probs))
-                    n_people = 0 if argmax_class == 0 else 1
+                    n_people = 1
                 
                 if not hasattr(self, '_survivors_hist'):
                     self._survivors_hist = {1: collections.deque(maxlen=10), 2: collections.deque(maxlen=10), 3: collections.deque(maxlen=10)}
@@ -440,10 +465,64 @@ _pos_history = collections.deque(maxlen=10)
 
 # Per-node latest vitals
 _node_vitals = {
-    1: {"motion": 0.0, "breathing": 0.0},
-    2: {"motion": 0.0, "breathing": 0.0},
-    3: {"motion": 0.0, "breathing": 0.0},
+    1: {"motion": 0.0, "breathing": 0.0, "rssi": -95},
+    2: {"motion": 0.0, "breathing": 0.0, "rssi": -95},
+    3: {"motion": 0.0, "breathing": 0.0, "rssi": -95},
 }
+
+
+# ── Rescuer Logic ─────────────────────────────────────────────────────────────
+
+def detect_rescuer_signal(data: bytes, addr: tuple):
+    """Detect and handle UDP messages from the ESP8266 rescuer device."""
+    global _rescuer_state
+    try:
+        msg = data.decode('utf-8').strip()
+        if msg in ["RESCUER_ACTIVE", "RESCUE_CONFIRMED"]:
+            _rescuer_state["ip"] = addr[0]
+            _rescuer_state["active"] = True
+            _rescuer_state["last_seen"] = time.time()
+            
+            if msg == "RESCUE_CONFIRMED" and not _rescuer_state["confirmed"]:
+                handle_rescue_confirmation()
+            
+            return True
+    except:
+        pass
+    return False
+
+def track_rescuer_position():
+    """Calculate rescuer position using RSSI triangulation from the 3 fixed nodes."""
+    global _rescuer_state
+    
+    # We use the latest RSSI reported by the 3 nodes.
+    # Note: In a production environment, you'd filter by the rescuer's MAC address.
+    # Here we assume the nodes are hearing the rescuer's high-frequency UDP bursts.
+    weights = {}
+    total_w = 0
+    wx, wy = 0.0, 0.0
+    
+    for nid in [1, 2, 3]:
+        # Convert RSSI to a positive weight (closer = stronger)
+        rssi = _node_vitals[nid]["rssi"]
+        w = max(0.01, 100 + rssi) 
+        weights[nid] = w
+        
+        nx, ny = NODE_POSITIONS[nid]
+        wx += w * nx
+        wy += w * ny
+        total_w += w
+        
+    if total_w > 0:
+        _rescuer_state["pos_x"] = round(float(np.clip(wx / total_w, 0.0, 1.0)), 4)
+        _rescuer_state["pos_y"] = round(float(np.clip(wy / total_w, 0.0, 1.0)), 4)
+
+def handle_rescue_confirmation():
+    """Lock the rescuer's current position and mark the rescue as confirmed."""
+    global _rescuer_state
+    _rescuer_state["confirmed"] = True
+    _rescuer_state["confirmed_pos"] = (_rescuer_state["pos_x"], _rescuer_state["pos_y"])
+    print(f"\n[!] RESCUE CONFIRMED at ({_rescuer_state['pos_x']}, {_rescuer_state['pos_y']})\n")
 
 
 # ── UDP Receiver ──────────────────────────────────────────────────────────────
@@ -461,13 +540,19 @@ def udp_receiver():
 
     while True:
         try:
-            data, _ = sock.recvfrom(4096)
+            data, addr = sock.recvfrom(4096)
         except socket.timeout:
             continue
         except Exception as e:
             print(f"[UDP] error: {e}")
             continue
 
+        # 1. Check for Rescuer Command (String messages)
+        if detect_rescuer_signal(data, addr):
+            track_rescuer_position()
+            continue
+
+        # 2. Parse Binary Node Data (ESP32-S3)
         result = parser.parse(data)
 
         if isinstance(result, VitalsPacket):
@@ -475,6 +560,7 @@ def udp_receiver():
             if nid in [1, 2, 3]:
                 _node_vitals[nid]["motion"] = result.motion_energy
                 _node_vitals[nid]["breathing"] = result.breathing_bpm
+                _node_vitals[nid]["rssi"] = -70 # Default for vitals
                 detector.update_node(
                     node_id=nid, rssi=-70,
                     motion=result.motion_energy,
@@ -486,6 +572,7 @@ def udp_receiver():
             if nid in [1, 2, 3]:
                 # Feed to CSI-ML buffer
                 csi_node.push_frame(nid, result.amplitude)
+                _node_vitals[nid]["rssi"] = result.rssi
 
                 detector.update_node(
                     node_id=nid, rssi=result.rssi,
@@ -632,6 +719,15 @@ async def broadcast_loop():
             "survivors":         target_survivors,
             "survivors_list":    survivors_list,
             "nodes":             node_data,
+            # Rescuer Data
+            "rescuer": {
+                "active":    _rescuer_state["active"] and (time.time() - _rescuer_state["last_seen"] < 5.0),
+                "confirmed": _rescuer_state["confirmed"],
+                "x":         _rescuer_state["pos_x"],
+                "y":         _rescuer_state["pos_y"],
+                "conf_x":    _rescuer_state["confirmed_pos"][0] if _rescuer_state["confirmed_pos"] else None,
+                "conf_y":    _rescuer_state["confirmed_pos"][1] if _rescuer_state["confirmed_pos"] else None,
+            },
             # Legacy compatibility
             "raw_rssi":          tri_result["node_rssi"].get(1, -100),
             "raw_motion":        tri_result["node_motion"].get(1, 0.0),

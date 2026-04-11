@@ -171,8 +171,10 @@ def train():
 
     # Save format exactly matching how rescue_backend.py loads it
     torch.save(model.state_dict(), "model.pth")
-    print("\n🎉 DONE! Saved highly-accurate model to `model.pth`.")
-    print("You can instantly reboot `rescue_backend.py` to deploy your hackathon model.")
+    print("\n" + "═"*60)
+    print(f"🎉 DONE! Saved {n_classes}-class model to `model.pth`.")
+    print(f"The backend will now automatically detect these {n_classes} classes.")
+    print("═"*60)
 
 if __name__ == "__main__":
     train()

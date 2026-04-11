@@ -99,6 +99,7 @@ function App() {
       avgRssi,
       maxMotion,
       avgBr,
+      rescuer: payload.rescuer || { active: false, confirmed: false, x: 0, y: 0 }
     };
   }, [payload]);
 
@@ -223,6 +224,28 @@ function App() {
                   {((ui?.triProb ?? 0) * 100).toFixed(1)}%
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="panel-title">Rescuer Status</div>
+          <div id="rescuer-card" className={ui?.rescuer?.active ? 'active' : ''}>
+            <div className="status-row">
+              <span className="lbl">State:</span>
+              <span className={`val ${ui?.rescuer?.active ? 'online' : 'offline'}`}>
+                {ui?.rescuer?.active ? 'RESCUER ON-SITE' : 'NO RESCUER DETECTED'}
+              </span>
+            </div>
+            {ui?.rescuer?.confirmed && (
+              <div className="status-row confirmed">
+                <span className="lbl">Status:</span>
+                <span className="val" style={{color: 'var(--node3)'}}>RESCUE CONFIRMED</span>
+              </div>
+            )}
+            <div className="status-row">
+              <span className="lbl">Position:</span>
+              <span className="val">
+                {ui?.rescuer?.active ? `(${ui.rescuer.x.toFixed(2)}, ${ui.rescuer.y.toFixed(2)})` : '--, --'}
+              </span>
             </div>
           </div>
 
@@ -423,6 +446,37 @@ function App() {
                       </g>
                     );
                   })}
+                </g>
+              )}
+
+              {/* Rescuer Layer */}
+              {ui?.rescuer?.active && (
+                <g id="rescuer-layer">
+                  {/* Confirmed Location Marker (Green) */}
+                  {ui.rescuer.confirmed && ui.rescuer.conf_x !== null && (
+                    <g className="confirmed-marker">
+                      {(() => {
+                        const { x, y } = posToSvg(ui.rescuer.conf_x, ui.rescuer.conf_y);
+                        return (
+                          <>
+                            <circle cx={x} cy={y} r="15" fill="none" stroke="#10b981" strokeWidth="3" strokeDasharray="4 2" />
+                            <path d={`M ${x-8} ${y} L ${x+8} ${y} M ${x} ${y-8} L ${x} ${y+8}`} stroke="#10b981" strokeWidth="3" />
+                          </>
+                        );
+                      })()}
+                    </g>
+                  )}
+                  
+                  {/* Active Rescuer Pointer (Blue) */}
+                  {(() => {
+                    const { x, y } = posToSvg(ui.rescuer.x, ui.rescuer.y);
+                    return (
+                      <g className="rescuer-pointer" filter="url(#glow)">
+                        <circle cx={x} cy={y} r="10" fill="#38bdf8" stroke="#fff" strokeWidth="2" />
+                        <text x={x} y={y-15} textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="bold">RESCUER</text>
+                      </g>
+                    );
+                  })()}
                 </g>
               )}
 
