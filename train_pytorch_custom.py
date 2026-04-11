@@ -146,7 +146,7 @@ def train():
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor.to(device))
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
-    epochs = 12
+    epochs = 20
     for epoch in range(epochs):
         model.train()
         total_loss = 0
