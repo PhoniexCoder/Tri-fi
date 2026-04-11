@@ -78,6 +78,9 @@ run-viz:
 run-docker:
 	docker compose up
 
+flash-rescuer:
+	@python3 scripts/flash_rescuer.py --port $(PORT) --ssid "$(SSID)" --password "$(PASSWORD)" --target-ip $(TARGET)
+
 # ─── Clean ───────────────────────────────────────────────────
 clean:
 	rm -f .install.log
@@ -116,6 +119,9 @@ help:
 	@echo "    make run-api-dev      Start API with hot-reload"
 	@echo "    make run-viz          Serve 3D visualization (port 3000)"
 	@echo "    make run-docker       Start Docker dev stack"
+	@echo ""
+	@echo "  Hardware:"
+	@echo "    make flash-rescuer    Flash ESP8266 rescuer (needs arduino-cli)"
 	@echo ""
 	@echo "  Utility:"
 	@echo "    make clean            Remove build artifacts"
