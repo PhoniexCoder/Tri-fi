@@ -304,7 +304,10 @@ TRI-FI's methodology is grounded in peer-reviewed academic research:
 
 ## 🤝 Team
 
-> *(Add team members here)*
+> *Prins Kanyal,*
+> *Vandana Bhandari,*
+> *Aadarsh Dimri,*
+> *Yuvraj Kabadwal*
 
 ---
 
