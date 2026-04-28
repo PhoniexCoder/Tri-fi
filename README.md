@@ -1,251 +1,318 @@
 <div align="center">
-  <h1>📡 TRI-FI: AI-Driven RF Disaster Perception Engine</h1>
-  <p><strong>Transforming standard WiFi signals into a life-saving disaster perception engine.</strong></p>
-  <p><i>Seeing through the rubble when it matters most.</i></p>
 
-  [![Hardware](https://img.shields.io/badge/Hardware-ESP32--S3-E7352C.svg?logo=espressif)](#-hardware--infrastructure-requirements)
-  [![AI](https://img.shields.io/badge/AI-PyTorch_&_CNN-EE4C2C.svg?logo=pytorch)](#-deep-dive-the-ai--machine-learning-approach)
-  [![License](https://img.shields.io/badge/License-MIT-green.svg)](#-license)
-  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
-  [![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](#-guides--internal-documentation)
+# 📡 TRI-FI
+### AI-Driven RF Disaster Perception Engine
+
+**Transforming standard WiFi signals into a life-saving disaster detection system.**
+
+*Seeing through the rubble — when it matters most.*
+
+---
+
+[![Hardware](https://img.shields.io/badge/Hardware-ESP32--S3-E7352C.svg?logo=espressif)](#-hardware--requirements)
+[![AI](https://img.shields.io/badge/AI-PyTorch_%26_CNN-EE4C2C.svg?logo=pytorch)](#-ai--machine-learning)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](#-internal-documentation)
+
 </div>
 
-<hr>
+---
 
-## 🚀 Welcome to TRI-FI
+## 📋 Table of Contents
 
-**TRI-FI** is an advanced, AI-powered IoT disaster response system. Its goal is simple: **Locate trapped survivors under rubble using standard 2.4 GHz WiFi signals.** 
-
-When a building collapses, rescuers are racing against the clock. They need to know *exactly* where to dig. Traditional tools like Ground Penetrating Radar (GPR) are incredibly expensive, and rescue dogs fatigue quickly. TRI-FI solves this by deploying a network of ultra-cheap ($8) ESP32-S3 WiFi chips that can "see" the micro-movements of a human breathing through solid concrete.
+1. [What is TRI-FI?](#-what-is-tri-fi)
+2. [The Problem](#-the-problem)
+3. [The Solution](#-the-solution)
+4. [How It Works — Step by Step](#%EF%B8%8F-how-it-works--step-by-step)
+5. [The AI & Machine Learning](#-ai--machine-learning)
+6. [Hardware Requirements](#-hardware--requirements)
+7. [System Architecture](#-system-architecture)
+8. [Tech Stack](#%EF%B8%8F-tech-stack)
+9. [Quick Start (Developer)](#-quick-start-developer)
+10. [Scalability](#-scalability)
+11. [Global Impact](#-global-impact--un-sdgs)
+12. [Research & References](#-research--references)
+13. [Internal Documentation](#-internal-documentation)
+14. [Team](#-team)
+15. [License](#-license)
 
 ---
 
-## ❗ The Problem We Are Solving
+## 🚀 What is TRI-FI?
 
-In search and rescue operations, the first 48 hours are known as the **"Golden Window"**. After this period, survival rates drop drastically. Rescuers currently rely on:
+**TRI-FI** is an advanced, AI-powered IoT disaster response system with one mission:
 
-1. **Ground-Penetrating Radar (GPR):** Highly accurate, but costs $15,000+ per unit. Most local fire departments cannot afford them.
-2. **Thermal Cameras (IR):** Completely useless if the victim is buried under deep concrete or drywall, as thermal radiation does not penetrate solid mass well.
-3. **Acoustic Sensors:** Listen for tapping or breathing, but disaster sites are incredibly noisy (generators, heavy machinery, shifting rubble), causing false positives.
-4. **K9 Units (Rescue Dogs):** Highly effective but can only work for short periods and cannot communicate exact depths or vitals.
+> **Locate trapped survivors under rubble using standard 2.4 GHz WiFi signals — for under $50.**
 
-**The Bottom Line:** First responders need a system that is cheap enough to deploy everywhere, fast enough to work instantly, and capable of penetrating solid debris.
+When a building collapses, rescuers race against time. Traditional tools are either too expensive or too limited:
+- Ground Penetrating Radar (GPR) costs **$15,000+**
+- Thermal cameras are **blocked by concrete**
+- Rescue dogs **fatigue quickly** and can't report exact depths
+
+TRI-FI deploys a network of ultra-cheap **$8 ESP32-S3** WiFi chips that detect the micro-movements of a human chest breathing through solid concrete — in real time.
 
 ---
 
-## 💡 The Solution: WiFi as a Radar
+## ❗ The Problem
 
-TRI-FI leverages the invisible radio waves already omnipresent in our environment. 
+The first 48 hours after a collapse are known as the **"Golden Window"**. Survival rates drop drastically after this period.
 
-### Why WiFi? 
-2.4 GHz WiFi waves pass naturally through non-metallic obstructions like wood, drywall, and concrete. 
+| Tool | Limitation |
+|---|---|
+| 🛰️ Ground-Penetrating Radar (GPR) | $15,000+ per unit — unaffordable for most departments |
+| 🌡️ Thermal Cameras (IR) | Cannot penetrate solid concrete or deep drywall |
+| 🔊 Acoustic Sensors | Overwhelmed by site noise (generators, machinery, shifting rubble) |
+| 🐕 K9 Units | Fatigue quickly; cannot report exact location or depth |
+
+**First responders need a system that is cheap, fast, and penetrates solid debris.**
+
+---
+
+## 💡 The Solution
+
+### Why WiFi?
+
+2.4 GHz WiFi waves pass naturally through non-metallic materials like wood, drywall, and concrete — making them ideal for "seeing" through rubble.
 
 ### The Core Concept (Physics Made Simple)
-Imagine a room filled with water, and you are standing still in the center. If you take a deep breath, your chest expands slightly, creating tiny ripples in the water. 
 
-WiFi works the same way. When a router sends a WiFi signal, it bounces off walls, floors, and debris before reaching the receiver. This creates a complex "web" of invisible signals. When a human trapped under rubble breathes, their chest cavity expands by merely a few millimeters. This tiny movement alters how the WiFi waves bounce. 
+Imagine filling a room with water. When you take a deep breath, your chest expands slightly and creates **tiny ripples**.
 
-By strategically placing **three $8 ESP32-S3 nodes** in a triangle over a collapsed zone, TRI-FI captures these minute signal disturbances at 20 frames per second. We then use Deep Learning (AI) to recognize the specific "ripple" pattern of human breathing and pinpoint the survivor. Total system cost? **Under $50.**
+WiFi works the same way:
+- A router sends signals that bounce off walls, floors, and debris
+- A trapped person's chest (expanding ~a few millimeters per breath) **disturbs those bounces**
+- TRI-FI captures those disturbances at **20 frames per second**
 
----
+By placing **three ESP32-S3 nodes in a triangle**, the system captures these signal changes and uses Deep Learning to identify the specific "ripple pattern" of a living, breathing human.
 
-## 🌟 Why This Is Innovative: CSI vs. RSSI
+### CSI vs. RSSI — Why It Matters
 
-Most people know WiFi signal strength by the "bars" on their phone. This is called **RSSI (Received Signal Strength Indicator)**. RSSI is like knowing the overall volume of a song. It's too noisy to detect breathing.
-
-TRI-FI uses **CSI (Channel State Information)**. CSI is like having the sheet music for the song, showing the exact volume and pitch of every single instrument. 
-Instead of one general signal score, CSI gives us 64 distinct data points (subcarriers) for *every single WiFi packet*. This unlocks radar-like, sub-millimeter tracking capabilities on an $8 microchip.
-
----
-
-## ⚙️ How It Works: The Step-by-Step Pipeline
-
-Here is exactly what happens when rescuers arrive at a disaster site:
-
-### 1. Mesh Deployment (The Setup)
-Rescuers drop three battery-powered ESP32-S3 chips in a triangle around the collapsed structure (up to a 15-meter radius). 
-
-### 2. Signal Saturation (The Invisible Web)
-The nodes immediately begin blasting and receiving specialized WiFi packets to each other. They do not need an internet connection; they create their own local, localized network. 
-
-### 3. CSI Extraction (Reading the Matrix)
-As the packets travel through the rubble, the ESP32 hardware bypasses standard network rules to extract the raw Channel State Information (CSI) from the physical radio layer. 
-
-### 4. AI Processing (Finding the Human)
-These raw signal numbers are sent via UDP to a local laptop (the Edge Compute Host). Our AI—a Convolutional Neural Network—analyzes the numbers. It has been trained to ignore the random signal bouncing caused by wind or settling rubble, and specifically look for the rhythmic pattern of a human body.
-
-### 5. Spectral Filtering (Confirming Life)
-To be absolutely sure it's a human, the system applies a math trick called a Fast Fourier Transform (FFT). It isolates signals that repeat exactly 6 to 30 times a minute—the exact rate of human breathing.
-
-### 6. Triangular Consensus (Locating the Target)
-If Node 1 thinks there is a human, it waits for Node 2 or Node 3 to agree. If at least 2 nodes confirm the breathing pattern, the system calculates the intersection of their signals (like GPS triangulation) and places a glowing red dot on the rescuer's iPad screen.
-
-### 7. Google Cloud Integrations (Reporting & Mapping)
-To augment the core offline system, the backend pushes sanitized vital sign data to the **Google Gemini API** to automatically generate human-readable START triage emergency dispatch reports. The React dashboard overlays the localized survivor heatmap onto **Google Maps Platform** satellite imagery to help incoming medical teams navigate the debris field.
+| | RSSI (Signal Bars) | CSI (TRI-FI) |
+|---|---|---|
+| **What it gives you** | 1 overall signal score | 64 individual data points per packet |
+| **Analogy** | Knowing the *volume* of a song | Reading the *sheet music* of a song |
+| **Useful for breathing detection?** | ❌ Too noisy | ✅ Sub-millimeter accuracy |
 
 ---
 
-## 🧠 Deep Dive: The AI & Machine Learning Approach
+## ⚙️ How It Works — Step by Step
 
-Our software doesn't just guess; it uses state-of-the-art machine learning algorithms tailored for time-series signal data:
+```
+[Nodes dropped]  →  [WiFi web created]  →  [CSI extracted]
+      ↓
+[AI analyzes signal]  →  [FFT confirms breathing]  →  [2+ nodes agree]
+      ↓
+[Dot appears on rescuer's iPad]  →  [Triage report generated]
+```
 
-1. **Modified ResNet-18 (CNN) - `custom_presence_model.pth`:** 
-   - *What it is:* ResNet-18 is a famous AI architecture usually used for recognizing images. 
-   - *How we use it:* We modified it to look at time instead of pictures. We feed the 64 WiFi subcarriers into the AI as a 1D timeline. The binary CSI presence model classifies whether the area is "Empty" or has "Human Presence."
-   
-2. **Fast Fourier Transform (FFT) Bandpass:**
-   - *What it is:* A math formula that separates mixed signals into their individual repeating frequencies.
-   - *How we use it:* We apply a strict digital bandpass filter of **0.1–0.5 Hz**. Any movement faster (like a falling rock) or slower is deleted. What's left is the pure, rhythmic wave of human breathing (6-30 BPM).
+### Step 1 — Mesh Deployment
+Rescuers drop three battery-powered ESP32-S3 nodes in a triangle around the collapsed structure (up to a **15-meter radius**).
+
+### Step 2 — Signal Saturation
+Nodes immediately send and receive specialized WiFi packets to each other. **No internet connection required** — they create their own local mesh network.
+
+### Step 3 — CSI Extraction
+As packets pass through rubble, the ESP32 hardware bypasses standard network rules to pull raw **Channel State Information** from the physical radio layer.
+
+### Step 4 — AI Processing
+Raw signal data is sent via UDP to the rescue laptop. A **Convolutional Neural Network (CNN)** analyzes the data, trained to ignore environmental noise (wind, settling rubble) and detect the rhythmic pattern of human breathing.
+
+### Step 5 — Spectral Filtering
+A **Fast Fourier Transform (FFT)** applies a digital bandpass filter of **0.1–0.5 Hz**, isolating signals that repeat 6–30 times per minute — the exact range of human breathing (6–30 BPM).
+
+### Step 6 — Triangular Consensus
+Detection is **confirmed only when 2 or more nodes agree**. Their overlapping signals are triangulated (like GPS) to pinpoint a 2D location, rendered as a glowing dot on the rescuer's iPad.
+
+### Step 7 — Cloud Reporting
+- **Google Gemini API** generates a human-readable START triage emergency dispatch report from survivor vital data
+- **Google Maps API** overlays the heatmap onto satellite imagery for incoming medical teams
 
 ---
 
-## 📡 Hardware & Infrastructure Requirements
+## 🧠 AI & Machine Learning
 
-To build and run TRI-FI, the hardware is incredibly accessible:
+TRI-FI uses two complementary algorithms for robust detection:
 
-- **Sensing Nodes:** 3x ESP32-S3 microcontrollers (Approx $8 each). Flashed with our custom C++ firmware based on ESP-IDF to unlock CSI promiscuous mode.
-- **Power:** Standard 5V USB power banks. A 10,000mAh battery powers a node for ~14 hours.
-- **Rescuer Tracker:** An ESP8266 chip carried by the rescuer. It acts as a beacon so the dashboard can show where the rescuer is walking relative to the trapped victim.
-- **Edge Server:** Any standard rugged laptop or Raspberry Pi 4 running Python 3.9+.
+### 1. Modified ResNet-18 CNN — `custom_presence_model.pth`
+
+| Property | Detail |
+|---|---|
+| **Architecture** | ResNet-18 (normally used for image recognition, adapted for 1D time-series) |
+| **Input** | 64 WiFi subcarriers as a 1D timeline |
+| **Output** | Binary classification — `Empty` or `Human Present` |
+| **Why ResNet?** | Deep residual connections prevent signal degradation in noisy RF environments |
+
+### 2. FFT Bandpass Filter
+
+| Property | Detail |
+|---|---|
+| **Method** | Fast Fourier Transform (FFT) |
+| **Frequency range** | 0.1–0.5 Hz (= 6–30 BPM) |
+| **What it removes** | Fast spikes (falling rocks), slow drift (thermal expansion), DC offset |
+| **What remains** | Pure, rhythmic human breathing wave |
 
 ---
 
-## 📊 System Architecture Diagram
+## 📡 Hardware & Requirements
 
-*A visual representation of the data flow from the rubble to the rescuer's screen.*
+### Minimum Hardware
+
+| Component | Spec | Cost |
+|---|---|---|
+| **Sensing Nodes** | 3× ESP32-S3 microcontrollers, flashed with CSI firmware | ~$8 each |
+| **Power** | 5V USB power banks (10,000 mAh = ~14 hours per node) | Standard |
+| **Rescuer Tracker** | 1× ESP8266 (worn by rescuer as a location beacon) | ~$3 |
+| **Edge Server** | Laptop or Raspberry Pi 4, running Python 3.9+ | Standard |
+
+> **Total system cost: Under $50**
+
+### Software Prerequisites
+
+- Python **3.9+**
+- Node.js **v18+**
+
+---
+
+## 📊 System Architecture
 
 ```mermaid
 graph TD
-    subgraph Debris Field [Disaster Zone]
+    subgraph Debris Field [🏚️ Disaster Zone]
         Victim((Trapped Survivor))
         N1[ESP32 Node 1]
         N2[ESP32 Node 2]
         N3[ESP32 Node 3]
-        
-        N1 <-. Invisible RF Waves .-> Victim
-        N2 <-. Invisible RF Waves .-> Victim
-        N3 <-. Invisible RF Waves .-> Victim
+
+        N1 <-. RF Waves .-> Victim
+        N2 <-. RF Waves .-> Victim
+        N3 <-. RF Waves .-> Victim
     end
 
-    subgraph Edge Compute Host [Rescue Laptop]
-        N1 -- Sends Data (UDP Port 4444) --> Parser[CSI Frame Parser]
-        N2 -- Sends Data (UDP Port 4444) --> Parser
-        N3 -- Sends Data (UDP Port 4444) --> Parser
-        
+    subgraph Edge Compute Host [💻 Rescue Laptop]
+        N1 -- UDP Port 4444 --> Parser[CSI Frame Parser]
+        N2 -- UDP Port 4444 --> Parser
+        N3 -- UDP Port 4444 --> Parser
+
         Parser --> Preproc[FFT Breathing Filter]
-        Preproc --> ML[ResNet-18 PyTorch AI]
+        Preproc --> ML[ResNet-18 PyTorch CNN]
         ML --> Logic[Triangular Voting Engine]
     end
 
-    subgraph Command Center [Rescuer iPad/Screen]
-        Logic -- Live Stream (WebSockets) --> React[React UI Dashboard]
-        React --> Heatmap[Glowing Heatmap of Victim]
+    subgraph Command Center [📱 Rescuer iPad]
+        Logic -- WebSocket --> React[React Dashboard]
+        React --> Heatmap[Survivor Heatmap]
         React --> Vitals[Live Breathing BPM]
     end
 
-    subgraph Google Cloud [Reporting Integrations]
-        Logic -- JSON Payload --> Gemini[Google Gemini API]
+    subgraph Google Cloud [☁️ Cloud Reporting]
+        Logic -- JSON --> Gemini[Google Gemini API]
         Gemini --> Report[Automated Triage Reports]
-        React -- GPS Overlay --> GMaps[Google Maps API]
+        React -- GPS --> GMaps[Google Maps API]
     end
 ```
 
 ---
 
-## 🖥️ The Tech Stack
+## 🖥️ Tech Stack
 
-- **Embedded Systems (The Nodes):** C/C++, ESP-IDF framework.
-- **Backend Server (The Brain):** Python, PyTorch (for AI), NumPy/SciPy (for complex math), FastAPI & WebSockets (to stream data instantly).
-- **Frontend Dashboard (The Screen):** React.js, Vite (for speed), TailwindCSS (for a dark, high-contrast, "glassmorphism" UI that is highly legible in bright sun).
-- **Google Cloud Platform:** Google Gemini API (for LLM-based triage report generation) and Google Maps API (for satellite heatmap overlays).
+| Layer | Technology |
+|---|---|
+| **Embedded (Nodes)** | C/C++, ESP-IDF framework |
+| **Backend (AI Brain)** | Python, PyTorch, NumPy, SciPy, FastAPI, WebSockets |
+| **Frontend (Dashboard)** | React.js, Vite, TailwindCSS |
+| **Cloud** | Google Gemini API, Google Maps Platform |
 
 ---
 
-## 🎬 How to Run the Project (Developer Quick Start)
+## 🎬 Quick Start (Developer)
 
-Want to test TRI-FI yourself? Follow these exact steps to run the software pipeline locally:
+Follow these steps to run TRI-FI locally without any hardware:
 
-### Prerequisites
-- Python 3.9+ installed on your computer.
-- Node.js v18+ installed.
+### Step 1 — Start the AI Backend
 
-### Step 1: Start the AI Backend
-This script acts as the core engine. It listens for the ESP32 CSI UDP packets on `0.0.0.0:4444` and exposes a WebSocket feed at `ws://localhost:8002` with survivor probabilities and RF heatmaps.
+The backend listens for ESP32 CSI data on `0.0.0.0:4444` and streams results via WebSocket at `ws://localhost:8002`.
+
 ```bash
-# Navigate to the backend examples folder
 cd examples
-
-# Run the backend server
 python rescue_backend.py
 ```
 
-### Step 2: Start the Rescuer Dashboard
-Open a new terminal window. This runs the visual map and UI interface you see on screen.
+### Step 2 — Start the Dashboard
+
+Open a **new terminal window**:
+
 ```bash
-# Navigate to the frontend UI folder
 cd ui/react-rescue
-
-# Install necessary JavaScript libraries
 npm install
-
-# Start the dashboard
 npm run dev
 ```
-*(Open your browser to `http://localhost:5173`. You will see the tactical interface load. It connects to the backend WebSocket automatically).*
 
-### Step 3: Connect Hardware
-Power on your 3 ESP32-S3 chips. Ensure their firmware is configured to send UDP packets to the IP address of the laptop running Step 1 on port `4444`. The dashboard will automatically light up with their live CSI metrics.
+> Open your browser to `http://localhost:5173`. The dashboard will connect to the backend WebSocket automatically.
 
+### Step 3 — Connect Hardware *(optional)*
 
----
-
-## 📈 Scalability: From 1 Node to an Entire Building
-
-TRI-FI uses a modular mathematical architecture that gets exponentially better the more nodes you add:
-- **1 Node:** Acts like a flashlight. It can detect breathing and presence in one directional cone.
-- **2 Nodes:** Acts like two eyes. It can detect depth, distance, and cross-reference signals.
-- **3 Nodes (Standard Setup):** Creates a "Triangle of Consensus." Calculates exact 2D coordinates (X, Y) using a Center of Mass algorithm to build a heatmap.
-- **N Nodes:** You can drop 10, 20, or 50 nodes over a massive collapsed apartment complex. The system calculates $N(N-1)$ directional links and automatically maps the entire grid dynamically.
+Power on your 3 ESP32-S3 nodes. Ensure their firmware points to the laptop's IP address on port `4444`. The dashboard will automatically display live CSI metrics.
 
 ---
 
-## 🌍 Global Impact (UN SDG Alignment)
+## 📈 Scalability
 
-We didn't just build this as a hackathon tech demo; we built it to solve global humanitarian crises, perfectly aligning with the United Nations Sustainable Development Goals:
+TRI-FI's architecture becomes more accurate with more nodes:
 
-- **❤️ SDG 3 (Good Health and Well-being):** By finding victims in minutes instead of days, we directly prevent crush syndrome, dehydration, and save lives.
-- **🏗️ SDG 9 (Industry, Innovation and Infrastructure):** We are taking everyday consumer WiFi infrastructure and hacking it into advanced architectural radar.
-- **🏙️ SDG 11 (Sustainable Cities and Communities):** We give underfunded fire departments in developing nations access to $50 radar tech, ensuring all cities can be resilient against earthquakes.
-- **🌱 SDG 13 (Climate Action):** As climate change increases the severity of natural disasters (landslides, hurricanes), cheap, disposable rescue tech is vital for immediate adaptation.
+| Configuration | Capability |
+|---|---|
+| **1 Node** | Detects presence in one directional cone (like a flashlight) |
+| **2 Nodes** | Adds depth & distance estimation via cross-referencing |
+| **3 Nodes** *(Standard)* | Full 2D triangulation → exact X/Y coordinates + heatmap |
+| **N Nodes** | Covers entire buildings; calculates N(N-1) directional links automatically |
+
+---
+
+## 🌍 Global Impact — UN SDGs
+
+| SDG | How TRI-FI Contributes |
+|---|---|
+| ❤️ **SDG 3** — Good Health & Well-being | Finds victims in minutes instead of days, preventing crush syndrome and dehydration |
+| 🏗️ **SDG 9** — Industry, Innovation & Infrastructure | Transforms commodity WiFi chips into architectural radar |
+| 🏙️ **SDG 11** — Sustainable Cities & Communities | Gives underfunded fire departments access to $50 radar technology |
+| 🌱 **SDG 13** — Climate Action | Provides cheap, disposable rescue tech for climate-driven disasters (landslides, hurricanes) |
 
 ---
 
 ## 📚 Research & References
 
-TRI-FI's core methodology is built upon peer-reviewed academic literature in the field of RF sensing:
-1. **DensePose From WiFi (CMU):** Groundbreaking research demonstrating human pose estimation using standard Wi-Fi CSI amplitude and phase.
-2. **Wi-Fi as a Radar (Widar 3.0):** Explores zero-effort cross-domain gesture recognition using Wi-Fi signals.
-3. **SpotFi (Stanford):** Decimeter level localization using Wi-Fi, providing the foundation for our multipath extraction logic.
+TRI-FI's methodology is grounded in peer-reviewed academic research:
+
+1. **DensePose From WiFi** *(CMU)* — Human pose estimation using Wi-Fi CSI amplitude and phase data.
+2. **Widar 3.0** — Zero-effort cross-domain gesture recognition via Wi-Fi signals.
+3. **SpotFi** *(Stanford)* — Decimeter-level localization using Wi-Fi; foundation for our multipath extraction logic.
 
 ---
 
-## 📖 Guides & Internal Documentation
+## 📖 Internal Documentation
 
-To deeply understand or expand upon the TRI-FI architecture, consult our internal wikis:
-- [System Methodology Sheet](docs/trifi_methodology_sheet.md): Comprehensive mathematical breakdown of our FFT algorithms and Triangular Consensus.
-- [Firmware Build Guide](firmware/README.md): Instructions for flashing the custom ESP32-S3 CSI extraction toolchain.
-- [React Frontend Documentation](ui/react-rescue/README.md): Component structure, WebSocket handlers, and glassmorphic UI configuration.
-- [Model Training Guide](examples/README.md): How to capture custom CSI datasets and retrain the PyTorch model for novel environments.
+| Document | Description |
+|---|---|
+| [Methodology Sheet](docs/trifi_methodology_sheet.md) | Mathematical breakdown of FFT algorithms and Triangular Consensus |
+| [Firmware Build Guide](firmware/README.md) | Flashing the ESP32-S3 CSI extraction toolchain |
+| [Frontend Docs](ui/react-rescue/README.md) | React component structure, WebSocket handlers, and UI configuration |
+| [Model Training Guide](examples/README.md) | Capturing custom CSI datasets and retraining the PyTorch model |
+| [Survivor Manual](SURVIVOR_MANUAL.md) | Field operations guide for deploying TRI-FI at a disaster site |
 
 ---
 
-## 🤝 The Team
-- *(Add Team Members Here)*
+## 🤝 Team
+
+> *(Add team members here)*
+
+---
 
 ## 📜 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-<br>
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+
+---
 
 <div align="center">
   <i>Built with ❤️ to save lives.</i>
