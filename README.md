@@ -80,6 +80,9 @@ To be absolutely sure it's a human, the system applies a math trick called a Fas
 ### 6. Triangular Consensus (Locating the Target)
 If Node 1 thinks there is a human, it waits for Node 2 or Node 3 to agree. If at least 2 nodes confirm the breathing pattern, the system calculates the intersection of their signals (like GPS triangulation) and places a glowing red dot on the rescuer's iPad screen.
 
+### 7. Google Cloud Integrations (Reporting & Mapping)
+To augment the core offline system, the backend pushes sanitized vital sign data to the **Google Gemini API** to automatically generate human-readable START triage emergency dispatch reports. The React dashboard overlays the localized survivor heatmap onto **Google Maps Platform** satellite imagery to help incoming medical teams navigate the debris field.
+
 ---
 
 ## 🧠 Deep Dive: The AI & Machine Learning Approach
@@ -139,6 +142,12 @@ graph TD
         React --> Heatmap[Glowing Heatmap of Victim]
         React --> Vitals[Live Breathing BPM]
     end
+
+    subgraph Google Cloud [Reporting Integrations]
+        Logic -- JSON Payload --> Gemini[Google Gemini API]
+        Gemini --> Report[Automated Triage Reports]
+        React -- GPS Overlay --> GMaps[Google Maps API]
+    end
 ```
 
 ---
@@ -148,6 +157,7 @@ graph TD
 - **Embedded Systems (The Nodes):** C/C++, ESP-IDF framework.
 - **Backend Server (The Brain):** Python, PyTorch (for AI), NumPy/SciPy (for complex math), FastAPI & WebSockets (to stream data instantly).
 - **Frontend Dashboard (The Screen):** React.js, Vite (for speed), TailwindCSS (for a dark, high-contrast, "glassmorphism" UI that is highly legible in bright sun).
+- **Google Cloud Platform:** Google Gemini API (for LLM-based triage report generation) and Google Maps API (for satellite heatmap overlays).
 
 ---
 
@@ -230,10 +240,7 @@ To deeply understand or expand upon the TRI-FI architecture, consult our interna
 ---
 
 ## 🤝 The Team
-- *Prins Kanyal*
-- *Vandana Bhandari*
-- *Aadarsh Dimri*
-- *Yuvraj Kabadwal*
+- *(Add Team Members Here)*
 
 ## 📜 License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
