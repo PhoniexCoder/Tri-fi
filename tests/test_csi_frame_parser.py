@@ -40,7 +40,7 @@ def vitals_packet(**kw):
 # ── Round trip against the real firmware code ────────────────────────────────
 
 @pytest.fixture(scope="module")
-def firmware_packets(tmp_path_factory):
+def firmware_output(tmp_path_factory):
     cc = shutil.which("gcc") or shutil.which("clang")
     if cc is None:
         pytest.skip("no host C compiler available")
@@ -52,12 +52,25 @@ def firmware_packets(tmp_path_factory):
         check=True, capture_output=True, text=True,
     )
     out = subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout
-    return {tag: bytes.fromhex(hx) for tag, hx in (line.split() for line in out.splitlines())}
+    return dict(line.split() for line in out.splitlines())
 
 
-def test_raw_frame_matches_firmware_serializer(firmware_packets):
+@pytest.fixture(scope="module")
+def fw(firmware_output):
+    return {k: bytes.fromhex(v) for k, v in firmware_output.items() if not k.startswith("pace")}
+
+
+@pytest.mark.parametrize("src_hz", [15, 20, 100, 500])
+def test_edge_dsp_pacer_holds_20hz(firmware_output, src_hz):
+    """The on-chip DSP is designed for 20 Hz; the pacer must deliver that on average."""
+    accepted = int(firmware_output[f"pace{src_hz}"])
+    expected = min(src_hz, 20) * 10          # 10 simulated seconds
+    assert abs(accepted - expected) <= max(3, expected * 0.05), accepted
+
+
+def test_raw_frame_matches_firmware_serializer(fw):
     parser = CSIFrameParser()
-    frame = parser.parse(firmware_packets["raw"])
+    frame = parser.parse(fw["raw"])
     assert isinstance(frame, CSIFrame)
     assert (frame.node_id, frame.n_antennas, frame.n_subcarriers) == (3, 1, 64)
     assert (frame.rssi, frame.noise_floor, frame.freq_mhz, frame.seq) == (-47, -92, 2437, 0)
@@ -67,13 +80,13 @@ def test_raw_frame_matches_firmware_serializer(firmware_packets):
     np.testing.assert_allclose(frame.amplitude, np.hypot(real, imag), rtol=1e-6)
     np.testing.assert_allclose(frame.phase, np.arctan2(imag, real), rtol=1e-6)
 
-    second = parser.parse(firmware_packets["raw2"])
+    second = parser.parse(fw["raw2"])
     assert second.seq == 1
     assert parser.stats[3].frames == 2 and parser.stats[3].lost == 0
 
 
-def test_vitals_matches_firmware_struct(firmware_packets):
-    pkt = CSIFrameParser().parse(firmware_packets["vitals"])
+def test_vitals_matches_firmware_struct(fw):
+    pkt = CSIFrameParser().parse(fw["vitals"])
     assert type(pkt) is VitalsPacket
     assert pkt.node_id == 2
     assert pkt.breathing_bpm == pytest.approx(14.5)
@@ -84,8 +97,8 @@ def test_vitals_matches_firmware_struct(firmware_packets):
     assert pkt.presence and pkt.motion and not pkt.fall
 
 
-def test_fused_vitals_matches_firmware_struct(firmware_packets):
-    pkt = CSIFrameParser().parse(firmware_packets["fused"])
+def test_fused_vitals_matches_firmware_struct(fw):
+    pkt = CSIFrameParser().parse(fw["fused"])
     assert isinstance(pkt, FusedVitalsPacket) and isinstance(pkt, VitalsPacket)
     assert pkt.node_id == 1
     assert pkt.breathing_bpm == pytest.approx(15.25)

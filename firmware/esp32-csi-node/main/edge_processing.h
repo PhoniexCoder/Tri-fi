@@ -28,6 +28,13 @@
 #define EDGE_VITALS_MAGIC     0xC5110002  /**< Vitals packet magic. */
 #define EDGE_COMPRESSED_MAGIC 0xC5110003  /**< Compressed frame magic. */
 
+/* ---- Sampling ----
+ * The DSP filters are designed for this fixed rate. CSI callbacks arrive at
+ * whatever rate traffic produces (often 100-500 Hz in promiscuous mode), so
+ * csi_collector.c paces edge_enqueue_csi() to exactly this average rate. */
+#define EDGE_SAMPLE_RATE_HZ   20
+#define EDGE_SAMPLE_PERIOD_US (1000000 / EDGE_SAMPLE_RATE_HZ)
+
 /* ---- Buffer sizes ---- */
 #define EDGE_RING_SLOTS       16    /**< SPSC ring buffer slots (power of 2). */
 #define EDGE_MAX_IQ_BYTES     1024  /**< Max I/Q payload per slot. */

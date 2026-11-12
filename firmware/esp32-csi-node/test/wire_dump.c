@@ -102,5 +102,23 @@ int main(void)
     f.mmwave_confidence = 80;
     dump("fused", &f, sizeof(f));
 
+    /* Edge DSP pacer: frames accepted over 10 s for several source rates,
+     * with deterministic +/-30% jitter on the inter-arrival time. */
+    const int src_hz[] = {15, 20, 100, 500};
+    for (size_t k = 0; k < sizeof(src_hz) / sizeof(src_hz[0]); k++) {
+        int64_t period = 1000000 / src_hz[k];
+        int64_t t = 1000, next = 0;
+        unsigned accepted = 0, lcg = 12345;
+        while (t < 10 * 1000000 + 1000) {
+            if (csi_pace_accept(t, EDGE_SAMPLE_PERIOD_US, &next)) {
+                accepted++;
+            }
+            lcg = lcg * 1103515245u + 12345u;
+            int64_t jitter = (int64_t)((lcg >> 16) % 61) - 30;   /* -30..+30 % */
+            t += period + period * jitter / 100;
+        }
+        printf("pace%d %u\n", src_hz[k], accepted);
+    }
+
     return 0;
 }
