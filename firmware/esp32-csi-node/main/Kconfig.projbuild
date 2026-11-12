@@ -15,7 +15,7 @@ menu "CSI Node Configuration"
 
     config CSI_TARGET_PORT
         int "Aggregator UDP port"
-        default 5005
+        default 4444
         range 1024 65535
         help
             UDP port the aggregator listens on.

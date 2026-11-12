@@ -162,7 +162,7 @@ def main():
     parser.add_argument("--ssid", help="WiFi SSID")
     parser.add_argument("--password", help="WiFi password")
     parser.add_argument("--target-ip", help="Aggregator host IP (e.g. 192.168.1.20)")
-    parser.add_argument("--target-port", type=int, help="Aggregator UDP port (default: 5005)")
+    parser.add_argument("--target-port", type=int, help="Aggregator UDP port (default: 4444)")
     parser.add_argument("--node-id", type=int, help="Node ID 0-255 (default: 1)")
     # TDM mesh settings
     parser.add_argument("--tdm-slot", type=int, help="TDM slot index for this node (0-based)")

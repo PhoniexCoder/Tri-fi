@@ -242,7 +242,7 @@ CONFIG_CSI_NODE_ID=1
 CONFIG_CSI_WIFI_SSID="wifi-densepose"
 CONFIG_CSI_WIFI_PASSWORD=""
 CONFIG_CSI_TARGET_IP="192.168.1.100"
-CONFIG_CSI_TARGET_PORT=5005
+CONFIG_CSI_TARGET_PORT=4444
 CONFIG_EDGE_TIER=2
 CONFIG_WASM_MAX_MODULES=4
 CONFIG_WASM_VERIFY_SIGNATURE=y
@@ -274,7 +274,7 @@ Expected output after boot:
 I (321) main: ESP32-S3 CSI Node (ADR-018) -- Node ID: 1
 I (345) main: WiFi STA initialized, connecting to SSID: wifi-densepose
 I (1023) main: Connected to WiFi
-I (1025) main: CSI streaming active -> 192.168.1.100:5005 (edge_tier=2, OTA=ready, WASM=ready)
+I (1025) main: CSI streaming active -> 192.168.1.100:4444 (edge_tier=2, OTA=ready, WASM=ready)
 ```
 
 ---
@@ -303,7 +303,7 @@ python scripts/provision.py --port COM7 \
 | `ssid` | string | `wifi-densepose` | WiFi SSID |
 | `password` | string | *(empty)* | WiFi password |
 | `target_ip` | string | `192.168.1.100` | Aggregator server IP address |
-| `target_port` | u16 | `5005` | Aggregator UDP port |
+| `target_port` | u16 | `4444` | Aggregator UDP port |
 | `node_id` | u8 | `1` | Unique node identifier (0-255) |
 
 #### Channel Hopping and TDM (ADR-029)
@@ -500,7 +500,7 @@ ESP32-S3 Node                                 Host Machine
 | WiFi STA --------> SPSC Ring Buffer      |  |                           |
 | CSI Callback        |                    |  |                           |
 | Channel Hop         v                    |  |                           |
-| NDP Inject   +-- Tier 0: Raw ADR-018 ---------> UDP/5005               |
+| NDP Inject   +-- Tier 0: Raw ADR-018 ---------> UDP/4444               |
 |              |   Tier 1: Phase + Welford |  |   Sensing Server          |
 |              |   Tier 2: Vitals + Fall  ---------> (vitals)             |
 |              |   Tier 3: WASM Dispatch  ---------> (events)             |
@@ -757,7 +757,7 @@ No physical ESP32 hardware is needed in CI.
 |---------|-------|-----|
 | No serial output | Wrong baud rate | Use `115200` in your serial monitor |
 | WiFi won't connect | Wrong SSID/password | Re-run `provision.py` with correct credentials |
-| No UDP frames received | Firewall blocking | Allow inbound UDP on port 5005 (see below) |
+| No UDP frames received | Firewall blocking | Allow inbound UDP on port 4444 (see below) |
 | `idf.py` fails on Windows | Git Bash/MSYS2 incompatibility | Use Docker -- this is the only supported build method on Windows |
 | CSI callback not firing | Promiscuous mode issue | Verify `esp_wifi_set_promiscuous(true)` in `csi_collector.c` |
 | WASM upload rejected | Signature verification | Disable with `wasm_verify=0` via NVS for development, or sign with Ed25519 |
@@ -769,7 +769,7 @@ No physical ESP32 hardware is needed in CI.
 ### Windows Firewall Rule
 
 ```powershell
-netsh advfirewall firewall add rule name="ESP32 CSI" dir=in action=allow protocol=UDP localport=5005
+netsh advfirewall firewall add rule name="ESP32 CSI" dir=in action=allow protocol=UDP localport=4444
 ```
 
 ---
