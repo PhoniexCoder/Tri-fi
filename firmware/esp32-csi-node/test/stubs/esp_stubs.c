@@ -12,6 +12,9 @@
 #include "wasm_runtime.h"
 #include <stdint.h>
 
+/** Last callback passed to esp_timer_create(), so host tests can fire it. */
+esp_timer_cb_t g_stub_last_timer_cb = NULL;
+
 /** Monotonically increasing microsecond counter for esp_timer_get_time(). */
 static int64_t s_fake_time_us = 0;
 

@@ -96,6 +96,11 @@ void nvs_config_load(nvs_config_t *cfg)
     cfg->filter_mac_set = 0;
     memset(cfg->filter_mac, 0, 6);
 
+    /* Anchor mode defaults: receiver that locks onto an anchor if one exists. */
+    cfg->node_role   = NODE_ROLE_RECEIVER;
+    cfg->anchor_hz   = 100;
+    cfg->anchor_lock = 1;
+
     /* Try to override from NVS */
     nvs_handle_t handle;
     esp_err_t err = nvs_open("csi_cfg", NVS_READONLY, &handle);
@@ -300,6 +305,32 @@ void nvs_config_load(nvs_config_t *cfg)
         ESP_LOGI(TAG, "NVS override: filter_mac=%02x:%02x:%02x:%02x:%02x:%02x",
                  cfg->filter_mac[0], cfg->filter_mac[1], cfg->filter_mac[2],
                  cfg->filter_mac[3], cfg->filter_mac[4], cfg->filter_mac[5]);
+    }
+
+    /* Anchor mode. */
+    uint8_t role_val;
+    if (nvs_get_u8(handle, "node_role", &role_val) == ESP_OK) {
+        if (role_val == NODE_ROLE_RECEIVER || role_val == NODE_ROLE_ANCHOR) {
+            cfg->node_role = role_val;
+            ESP_LOGI(TAG, "NVS override: node_role=%s",
+                     role_val == NODE_ROLE_ANCHOR ? "anchor" : "receiver");
+        } else {
+            ESP_LOGW(TAG, "NVS node_role=%u invalid, ignored", (unsigned)role_val);
+        }
+    }
+    uint16_t anchor_hz_val;
+    if (nvs_get_u16(handle, "anchor_hz", &anchor_hz_val) == ESP_OK) {
+        if (anchor_hz_val >= 10 && anchor_hz_val <= 200) {
+            cfg->anchor_hz = anchor_hz_val;
+            ESP_LOGI(TAG, "NVS override: anchor_hz=%u", (unsigned)cfg->anchor_hz);
+        } else {
+            ESP_LOGW(TAG, "NVS anchor_hz=%u out of range 10-200, ignored", (unsigned)anchor_hz_val);
+        }
+    }
+    uint8_t anchor_lock_val;
+    if (nvs_get_u8(handle, "anchor_lock", &anchor_lock_val) == ESP_OK) {
+        cfg->anchor_lock = anchor_lock_val ? 1 : 0;
+        ESP_LOGI(TAG, "NVS override: anchor_lock=%u", (unsigned)cfg->anchor_lock);
     }
 
     /* ADR-066: Swarm bridge */

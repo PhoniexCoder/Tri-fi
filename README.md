@@ -36,12 +36,12 @@ ESP32-S3 nodes ──UDP──► Python backend ──WebSocket──► React 
 | Signal processing | `csi_preprocessing.py` | Features and FFT breathing estimate |
 | Dashboard (React + Vite) | `ui/react-rescue/` | Dev server on port `3000` |
 | Rescuer badge (ESP8266) | `firmware/rescuer_esp8266.ino` | Optional heartbeat / confirm button |
-| Tools | `scripts/` | Provisioning, rescuer flashing, UDP sniffer, mmWave bridge |
+| Provisioning | `firmware/esp32-csi-node/provision.py` | Per-node WiFi, target, role (anchor/receiver) |
+| Tools | `scripts/` | Rescuer flashing, UDP sniffer, mmWave bridge |
+| Tests | `tests/` | `python -m pytest tests -q` (host C compiler needed for firmware tests) |
 
 ### Known limitations (being fixed)
 
-- The vitals packet is decoded at the wrong byte offsets.
-- Firmware sends to UDP port `5005` by default; the backend listens on `4444` (provision nodes with `--target-port 4444`).
 - The backend's breathing filter suppresses the breathing band; one node is currently enough to report a detection.
 - Positions shown are a weighted average of node locations, not true localisation.
 - Control channels (UDP, WebSocket, OTA without a PSK) are unauthenticated.
@@ -85,20 +85,29 @@ Open `http://localhost:3000`. The dashboard connects to `ws://localhost:8002` (o
 
 ### 4. Connect nodes (optional)
 
-Flash the firmware (see `firmware/esp32-csi-node/README.md`), then provision each node:
+Flash the firmware (see `firmware/esp32-csi-node/README.md`). All nodes and the laptop join one 2.4 GHz network; the laptop's own mobile hotspot works, so no router is needed.
+
+Provision one node as the **anchor**. It broadcasts beacons at a fixed 100 Hz for the others to measure:
 
 ```bash
-python firmware/esp32-csi-node/provision.py --port COM7 \
+python firmware/esp32-csi-node/provision.py --port COM7 --role anchor \
+  --ssid "<network>" --password "<password>" --node-id 0
+```
+
+Provision each **receiver**. It locks onto the anchor automatically and streams CSI to the laptop:
+
+```bash
+python firmware/esp32-csi-node/provision.py --port COM8 \
   --ssid "<network>" --password "<password>" \
   --target-ip <laptop-ip> --target-port 4444 --node-id 1
 ```
 
-Repeat with `--node-id 2` and `--node-id 3`. Use `python scripts/udp_debug.py` to confirm packets are arriving.
+Repeat with `--node-id 2` and `--node-id 3`. On a Windows hotspot the laptop is usually `192.168.137.1`. Allow inbound UDP 4444 in the firewall. The backend logs each node's packet rate, loss and RSSI every 10 seconds; `python scripts/udp_debug.py` shows raw arrivals.
 
 ## Roadmap
 
-1. **Reset and secure** — repository cleanup (this release).
-2. **Data path** — shared wire-format spec, correct decoders, one UDP port, router-free anchor mode.
+1. **Reset and secure** — repository cleanup. Done.
+2. **Data path** — correct decoders, one UDP port, fixed-rate anchor mode. Done, pending hardware verification.
 3. **Platform** — split the backend into tested stages with record/replay.
 4. **Through-debris validation** — concrete-block test rig and measured detection rates.
 5. **Algorithms, productisation, pilot** — gated on step 4.

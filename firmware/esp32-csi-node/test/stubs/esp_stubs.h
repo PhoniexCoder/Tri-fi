@@ -25,10 +25,13 @@ typedef int esp_err_t;
 #define ESP_ERR_NOT_FOUND   0x105
 
 /* ---- esp_log.h ---- */
-#define ESP_LOGI(tag, fmt, ...)  ((void)0)
-#define ESP_LOGW(tag, fmt, ...)  ((void)0)
-#define ESP_LOGE(tag, fmt, ...)  ((void)0)
-#define ESP_LOGD(tag, fmt, ...)  ((void)0)
+/* Dead-code printf keeps arguments "used" and format-checked, prints nothing. */
+#define ESP_LOG_STUB_(tag, fmt, ...) \
+    do { if (0) { (void)(tag); printf(fmt, ##__VA_ARGS__); } } while (0)
+#define ESP_LOGI(tag, fmt, ...)  ESP_LOG_STUB_(tag, fmt, ##__VA_ARGS__)
+#define ESP_LOGW(tag, fmt, ...)  ESP_LOG_STUB_(tag, fmt, ##__VA_ARGS__)
+#define ESP_LOGE(tag, fmt, ...)  ESP_LOG_STUB_(tag, fmt, ##__VA_ARGS__)
+#define ESP_LOGD(tag, fmt, ...)  ESP_LOG_STUB_(tag, fmt, ##__VA_ARGS__)
 #define ESP_ERROR_CHECK(x)       ((void)(x))
 
 /* ---- esp_timer.h ---- */
@@ -50,9 +53,14 @@ typedef struct {
  */
 int64_t esp_timer_get_time(void);
 
-/** Stub: timer lifecycle (no-ops for fuzz testing). */
+/** Last timer callback registered via esp_timer_create (for host tests). */
+extern esp_timer_cb_t g_stub_last_timer_cb;
+
+/** Stub: timer lifecycle (no-ops; records the callback so tests can fire it). */
 static inline esp_err_t esp_timer_create(const esp_timer_create_args_t *args, esp_timer_handle_t *h) {
-    (void)args; if (h) *h = (void *)1; return ESP_OK;
+    if (args) g_stub_last_timer_cb = args->callback;
+    if (h) *h = (void *)1;
+    return ESP_OK;
 }
 static inline esp_err_t esp_timer_start_periodic(esp_timer_handle_t h, uint64_t period) {
     (void)h; (void)period; return ESP_OK;
