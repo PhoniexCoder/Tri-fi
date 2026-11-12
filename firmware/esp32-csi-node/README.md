@@ -150,7 +150,10 @@ All packets are sent over UDP to the configured aggregator. The magic number in 
 |-------|------|------|------|----------|
 | `0xC5110001` | CSI Frame (ADR-018) | ~20 Hz | Variable | Raw I/Q per subcarrier per antenna |
 | `0xC5110002` | Vitals Packet | 1 Hz | 32 bytes | Presence, breathing BPM, heart rate, fall flag, occupancy |
-| `0xC5110004` | WASM Output | Event-driven | Variable | Custom events from WASM modules (u8 type + f32 value) |
+| `0xC5110003` | Compressed CSI | Tier 2 | Variable | Delta + RLE compressed I/Q |
+| `0xC5110004` | Fused Vitals | 1 Hz | 48 bytes | Vitals packet + mmWave fields (sent instead of `0xC5110002` when mmWave is attached) |
+| `0xC5110005` | WASM Output | Event-driven | Variable | Custom events from WASM modules (u8 type + f32 value) |
+| `0xC5110006` | Anchor Beacon | Fixed rate | 12 bytes | ESP-NOW broadcast from the anchor node (not sent over UDP) |
 
 ### ADR-018 Binary Frame Format
 

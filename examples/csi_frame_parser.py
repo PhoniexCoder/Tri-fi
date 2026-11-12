@@ -1,185 +1,259 @@
 """
-csi_frame_parser.py — ADR-018 Binary Frame Decoder
-Parses raw UDP frames sent by csi_collector.c into structured numpy arrays.
+csi_frame_parser.py — decoder for the UDP packets sent by the ESP32-S3 CSI node.
 
-ADR-018 Frame Layout (from csi_collector.h):
-  Bytes [0..3]   Magic: 0xC5110001 (LE u32)
-  Byte  [4]      Node ID
-  Byte  [5]      N antennas
-  Bytes [6..7]   N subcarriers (LE u16)  = iq_len / (2 * n_ant)
-  Bytes [8..11]  Frequency MHz (LE u32)
-  Bytes [12..15] Sequence number (LE u32)
-  Byte  [16]     RSSI (i8)
-  Byte  [17]     Noise floor (i8)
-  Bytes [18..19] Reserved
-  Bytes [20..]   I/Q data: alternating int8 [real0, imag0, real1, imag1, ...]
+Every packet starts with a little-endian u32 magic. The layouts below mirror
+the C definitions exactly; tests/test_csi_frame_parser.py round-trips them
+against the real firmware serializer and structs.
 
-ADR-018 Vitals Packet (magic 0xC5110002) is produced by edge_processing.c
-and carries pre-computed vitals — this parser handles BOTH frame types.
+  0xC5110001  Raw CSI frame     csi_collector.c  csi_serialize_frame()
+  0xC5110002  Vitals (32 B)     edge_processing.h edge_vitals_pkt_t
+  0xC5110003  Compressed CSI    edge_processing.c (delta + RLE; skipped here)
+  0xC5110004  Fused vitals (48 B, CSI + mmWave) edge_fused_vitals_pkt_t
+  0xC5110005  WASM module output wasm_runtime.h (skipped here)
+  0xC5110006  Anchor beacon     anchor.c (ESP-NOW payload; never sent over UDP)
+
+Raw CSI frame header (20 bytes):
+  [0..3]   magic u32
+  [4]      node_id u8
+  [5]      n_antennas u8
+  [6..7]   n_subcarriers u16          (per antenna)
+  [8..11]  freq_mhz u32
+  [12..15] sequence u32
+  [16]     rssi i8
+  [17]     noise_floor i8
+  [18..19] reserved
+  [20..]   CSI bytes exactly as delivered by ESP-IDF: for each subcarrier,
+           one signed byte imaginary part followed by one signed byte real part.
 """
 
-import struct
-import numpy as np
-from dataclasses import dataclass, field
-from typing import Optional
+from __future__ import annotations
 
-# ── Constants from csi_collector.h ────────────────────────────────────────────
-CSI_MAGIC_RAW    = 0xC5110001   # Raw I/Q frame
-CSI_MAGIC_VITALS = 0xC5110002   # Pre-computed vitals packet
-CSI_HEADER_SIZE  = 20
+import struct
+from dataclasses import dataclass
+from typing import Optional, Union
+
+import numpy as np
+
+# ── Magic numbers (keep in sync with the firmware headers) ──────────────────
+CSI_MAGIC_RAW        = 0xC5110001
+CSI_MAGIC_VITALS     = 0xC5110002
+CSI_MAGIC_COMPRESSED = 0xC5110003
+CSI_MAGIC_FUSED      = 0xC5110004
+CSI_MAGIC_WASM       = 0xC5110005
+CSI_MAGIC_ANCHOR     = 0xC5110006
+
+CSI_HEADER_SIZE = 20
+
+# struct formats mirroring the packed C structs
+RAW_HEADER_FMT = "<IBBHIIbbH"            # 20 bytes
+VITALS_FMT     = "<IBBHIbB2xffII"        # 32 bytes, edge_vitals_pkt_t
+FUSED_FMT      = "<IBBHIbBBBffIfffBBHI"  # 48 bytes, edge_fused_vitals_pkt_t
+
+VITALS_SIZE = struct.calcsize(VITALS_FMT)
+FUSED_SIZE  = struct.calcsize(FUSED_FMT)
+assert struct.calcsize(RAW_HEADER_FMT) == CSI_HEADER_SIZE
+assert VITALS_SIZE == 32 and FUSED_SIZE == 48
+
+# Vitals flag bits (edge_vitals_pkt_t.flags)
+FLAG_PRESENCE = 0x01
+FLAG_FALL     = 0x02
+FLAG_MOTION   = 0x04
+FLAG_MMWAVE   = 0x08   # fused packets only
+
+_SKIPPED_MAGICS = {CSI_MAGIC_COMPRESSED, CSI_MAGIC_WASM, CSI_MAGIC_ANCHOR}
 
 
 @dataclass
 class CSIFrame:
-    """
-    Decoded ADR-018 raw I/Q frame.
-
-    amplitude  : float32 array (n_subcarriers,) — |I + jQ| per subcarrier
-    phase      : float32 array (n_subcarriers,) — atan2(Q, I) per subcarrier
-    phase_diff : float32 array (n_subcarriers-1,) — adjacent phase differences
-                 (removes carrier-frequency offset, more robust for sensing)
-    rssi       : int dBm
-    n_subcarriers: int  (typically 64 or 128 for HT20/HT40)
-    node_id    : int
-    seq        : int  sequence counter
-    freq_mhz   : int  WiFi channel centre frequency
-    """
-    amplitude   : np.ndarray
-    phase       : np.ndarray
-    phase_diff  : np.ndarray
-    rssi        : int
-    noise_floor : int
+    """Decoded raw CSI frame (antenna 0)."""
+    amplitude    : np.ndarray   # float32 (n_subcarriers,)  |real + j*imag|
+    phase        : np.ndarray   # float32 (n_subcarriers,)  atan2(imag, real)
+    phase_diff   : np.ndarray   # float32 (n_subcarriers-1,) adjacent differences
+    rssi         : int          # dBm
+    noise_floor  : int          # dBm
     n_subcarriers: int
-    node_id     : int
-    seq         : int
-    freq_mhz    : int
-    raw_iq      : np.ndarray   # raw int8 I/Q kept for debugging
+    n_antennas   : int
+    node_id      : int
+    seq          : int
+    freq_mhz     : int
+    raw_iq       : np.ndarray   # int8 bytes as received (imag, real pairs)
 
 
 @dataclass
 class VitalsPacket:
-    """Decoded ADR-018 vitals packet (magic 0xC5110002)."""
+    """Decoded on-chip vitals packet (0xC5110002)."""
+    node_id       : int
+    flags         : int
     breathing_bpm : float
     heart_bpm     : float
+    rssi          : int
+    n_persons     : int
     motion_energy : float
-    presence      : bool
-    node_id       : int
-    seq           : int
+    presence_score: float
+    timestamp_ms  : int
+
+    @property
+    def presence(self) -> bool:
+        return bool(self.flags & FLAG_PRESENCE)
+
+    @property
+    def fall(self) -> bool:
+        return bool(self.flags & FLAG_FALL)
+
+    @property
+    def motion(self) -> bool:
+        return bool(self.flags & FLAG_MOTION)
+
+
+@dataclass
+class FusedVitalsPacket(VitalsPacket):
+    """Decoded fused CSI + mmWave vitals packet (0xC5110004)."""
+    mmwave_type      : int = 0
+    fusion_confidence: int = 0
+    mmwave_hr_bpm    : float = 0.0
+    mmwave_br_bpm    : float = 0.0
+    mmwave_distance  : float = 0.0   # cm
+    mmwave_targets   : int = 0
+    mmwave_confidence: int = 0
+
+    @property
+    def mmwave_present(self) -> bool:
+        return bool(self.flags & FLAG_MMWAVE)
+
+
+@dataclass
+class LinkStats:
+    """Per-node packet accounting for raw CSI frames."""
+    frames   : int = 0
+    lost     : int = 0
+    last_seq : Optional[int] = None
+    last_rssi: int = 0
+
+    @property
+    def loss_ratio(self) -> float:
+        total = self.frames + self.lost
+        return self.lost / total if total else 0.0
+
+
+ParseResult = Optional[Union[CSIFrame, VitalsPacket]]
 
 
 class CSIFrameParser:
     """
-    Parses raw UDP bytes from the ESP32-S3 into CSIFrame or VitalsPacket objects.
+    Parses UDP payloads from ESP32-S3 nodes.
 
-    Usage:
         parser = CSIFrameParser()
-        frame = parser.parse(udp_payload_bytes)
-        if isinstance(frame, CSIFrame):
-            amp = frame.amplitude      # shape: (n_sub,)
-            ph  = frame.phase          # shape: (n_sub,)
+        result = parser.parse(payload)
+        if isinstance(result, CSIFrame): ...
+        elif isinstance(result, VitalsPacket): ...   # includes FusedVitalsPacket
     """
 
     def __init__(self, expected_node_id: Optional[int] = None):
-        """
-        expected_node_id: if set, frames from other nodes are silently dropped.
-        """
         self._expected_node = expected_node_id
         self.n_parsed  = 0
-        self.n_dropped = 0
+        self.n_dropped = 0   # malformed or unknown
+        self.n_skipped = 0   # valid but not decoded here (compressed, WASM)
+        self.stats: dict[int, LinkStats] = {}
 
-    def parse(self, data: bytes):
-        """
-        Parse a UDP payload.
-        Returns CSIFrame | VitalsPacket | None (on parse error / unknown magic).
-        """
-        if len(data) < CSI_HEADER_SIZE:
+    def parse(self, data: bytes) -> ParseResult:
+        if len(data) < 4:
             self.n_dropped += 1
             return None
 
         magic = struct.unpack_from("<I", data, 0)[0]
-
         if magic == CSI_MAGIC_RAW:
-            return self._parse_raw(data)
+            result = self._parse_raw(data)
         elif magic == CSI_MAGIC_VITALS:
-            return self._parse_vitals(data)
+            result = self._parse_vitals(data)
+        elif magic == CSI_MAGIC_FUSED:
+            result = self._parse_fused(data)
+        elif magic in _SKIPPED_MAGICS:
+            self.n_skipped += 1
+            return None
         else:
+            result = None
+
+        if result is None:
             self.n_dropped += 1
             return None
+        if self._expected_node is not None and result.node_id != self._expected_node:
+            self.n_dropped += 1
+            return None
+        self.n_parsed += 1
+        return result
 
     # ── private ───────────────────────────────────────────────────────────────
 
     def _parse_raw(self, data: bytes) -> Optional[CSIFrame]:
-        node_id      = data[4]
-        n_ant        = data[5]
-        n_sub        = struct.unpack_from("<H", data, 6)[0]
-        freq_mhz     = struct.unpack_from("<I", data, 8)[0]
-        seq          = struct.unpack_from("<I", data, 12)[0]
-        rssi         = struct.unpack_from("b",  data, 16)[0]   # signed
-        noise_floor  = struct.unpack_from("b",  data, 17)[0]
-
-        if self._expected_node is not None and node_id != self._expected_node:
-            self.n_dropped += 1
+        if len(data) < CSI_HEADER_SIZE:
+            return None
+        (_, node_id, n_ant, n_sub, freq_mhz, seq,
+         rssi, noise_floor, _) = struct.unpack_from(RAW_HEADER_FMT, data, 0)
+        if n_ant == 0 or n_sub == 0:
             return None
 
+        expected = n_ant * n_sub * 2
         iq_bytes = data[CSI_HEADER_SIZE:]
-        if len(iq_bytes) < 2:
-            self.n_dropped += 1
-            return None
+        if len(iq_bytes) < expected:
+            return None   # truncated frame
+        raw = np.frombuffer(iq_bytes[:expected], dtype=np.int8)
 
-        # Raw I/Q: alternating int8 [I0 Q0 I1 Q1 ...]
-        raw = np.frombuffer(iq_bytes, dtype=np.int8).astype(np.float32)
+        # Antenna 0 only; ESP-IDF stores (imaginary, real) per subcarrier.
+        ant0 = raw[: n_sub * 2].astype(np.float32)
+        imag = ant0[0::2]
+        real = ant0[1::2]
 
-        # Handle odd-length (should never happen, but guard anyway)
-        if len(raw) % 2 != 0:
-            raw = raw[:-1]
+        amplitude  = np.sqrt(real ** 2 + imag ** 2)
+        phase      = np.arctan2(imag, real).astype(np.float32)
+        phase_diff = np.diff(np.unwrap(phase)).astype(np.float32)
 
-        I = raw[0::2]
-        Q = raw[1::2]
-
-        amplitude  = np.sqrt(I**2 + Q**2)               # (n_sub,)
-        phase      = np.arctan2(Q, I)                    # (n_sub,) in [-π, π]
-        phase_diff = np.diff(np.unwrap(phase))           # (n_sub-1,) CFO-free
-
-        self.n_parsed += 1
+        self._account(node_id, seq, rssi)
         return CSIFrame(
-            amplitude    = amplitude,
-            phase        = phase,
-            phase_diff   = phase_diff,
-            rssi         = rssi,
-            noise_floor  = noise_floor,
-            n_subcarriers= len(amplitude),
-            node_id      = node_id,
-            seq          = seq,
-            freq_mhz     = freq_mhz,
-            raw_iq       = raw,
+            amplitude=amplitude, phase=phase, phase_diff=phase_diff,
+            rssi=rssi, noise_floor=noise_floor,
+            n_subcarriers=n_sub, n_antennas=n_ant,
+            node_id=node_id, seq=seq, freq_mhz=freq_mhz, raw_iq=raw,
         )
 
-    def _parse_vitals(self, data: bytes) -> Optional[VitalsPacket]:
-        """
-        Parse 0xC5110002 vitals packet from edge_processing.c.
-        Layout (32 bytes total, see edge_processing.c broadcast_vitals_packet):
-          [0..3]  magic
-          [4]     node_id
-          [5]     reserved
-          [6..7]  seq (LE u16)
-          [8..11] breathing_bpm (LE f32)
-          [12..15] heart_bpm (LE f32)
-          [16..19] motion_energy (LE f32)
-          [20]    presence (u8, 0/1)
-        """
-        if len(data) < 21:
+    def _account(self, node_id: int, seq: int, rssi: int) -> None:
+        st = self.stats.setdefault(node_id, LinkStats())
+        if st.last_seq is not None:
+            gap = (seq - st.last_seq) & 0xFFFFFFFF
+            if 1 < gap < 10_000:          # ignore reorders and node reboots
+                st.lost += gap - 1
+        st.last_seq = seq
+        st.frames += 1
+        st.last_rssi = rssi
+
+    @staticmethod
+    def _parse_vitals(data: bytes) -> Optional[VitalsPacket]:
+        if len(data) < VITALS_SIZE:
             return None
-        node_id      = data[4]
-        seq          = struct.unpack_from("<H", data, 6)[0]
-        br           = struct.unpack_from("<f", data, 8)[0]
-        hr           = struct.unpack_from("<f", data, 12)[0]
-        motion       = struct.unpack_from("<f", data, 16)[0]
-        presence     = bool(data[20])
+        (_, node_id, flags, br_x100, hr_x10000, rssi, n_persons,
+         motion, presence_score, ts_ms, _) = struct.unpack_from(VITALS_FMT, data, 0)
         return VitalsPacket(
-            breathing_bpm = float(br),
-            heart_bpm     = float(hr),
-            motion_energy = float(motion),
-            presence      = presence,
-            node_id       = node_id,
-            seq           = int(seq),
+            node_id=node_id, flags=flags,
+            breathing_bpm=br_x100 / 100.0, heart_bpm=hr_x10000 / 10000.0,
+            rssi=rssi, n_persons=n_persons,
+            motion_energy=float(motion), presence_score=float(presence_score),
+            timestamp_ms=ts_ms,
+        )
+
+    @staticmethod
+    def _parse_fused(data: bytes) -> Optional[FusedVitalsPacket]:
+        if len(data) < FUSED_SIZE:
+            return None
+        (_, node_id, flags, br_x100, hr_x10000, rssi, n_persons,
+         mw_type, fusion_conf, motion, presence_score, ts_ms,
+         mw_hr, mw_br, mw_dist, mw_targets, mw_conf, _, _) = struct.unpack_from(FUSED_FMT, data, 0)
+        return FusedVitalsPacket(
+            node_id=node_id, flags=flags,
+            breathing_bpm=br_x100 / 100.0, heart_bpm=hr_x10000 / 10000.0,
+            rssi=rssi, n_persons=n_persons,
+            motion_energy=float(motion), presence_score=float(presence_score),
+            timestamp_ms=ts_ms,
+            mmwave_type=mw_type, fusion_confidence=fusion_conf,
+            mmwave_hr_bpm=float(mw_hr), mmwave_br_bpm=float(mw_br),
+            mmwave_distance=float(mw_dist), mmwave_targets=mw_targets,
+            mmwave_confidence=mw_conf,
         )

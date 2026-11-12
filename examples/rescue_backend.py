@@ -21,6 +21,14 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
+# Never let console encoding (e.g. cp1252 on Windows) crash a print and
+# take model loading down with it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 # Add project root for imports
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
@@ -156,11 +164,12 @@ class CSINodeInference:
             self._model_mtime = os.path.getmtime(target_path)
             self._model_path = target_path
             self._binary_model = using_binary
-            mode = "2-class binary (custom_presence_model.pth)" if using_binary else "6-class legacy (model.pth)"
-            print(f"[CSI-ML] ⚡ PyTorch ResNet-18 Model hot-loaded: {target_path} ({mode})")
         except Exception as e:
             print(f"[CSI-ML] Load failed from {target_path}: {e}")
             self._model = None
+            return
+        mode = "2-class binary (custom_presence_model.pth)" if using_binary else "6-class legacy (model.pth)"
+        print(f"[CSI-ML] ⚡ PyTorch ResNet-18 Model hot-loaded: {target_path} ({mode})")
 
     def push_frame(self, node_id: int, amplitude: np.ndarray):
         """Add one CSI amplitude vector (n_subcarriers,) to buffer."""
@@ -527,6 +536,23 @@ def handle_rescue_confirmation():
 
 # ── UDP Receiver ──────────────────────────────────────────────────────────────
 
+LINK_STATS_INTERVAL_S = 10.0
+
+
+def _log_link_stats(elapsed: float, last_frames: dict) -> None:
+    """Print per-node CSI frame rate, cumulative loss and RSSI."""
+    if not parser.stats:
+        print(f"[LINK] no CSI frames yet (dropped={parser.n_dropped}, skipped={parser.n_skipped})")
+        return
+    parts = []
+    for nid in sorted(parser.stats):
+        st = parser.stats[nid]
+        rate = (st.frames - last_frames.get(nid, 0)) / elapsed if elapsed > 0 else 0.0
+        last_frames[nid] = st.frames
+        parts.append(f"N{nid} {rate:5.1f} Hz loss {st.loss_ratio * 100:4.1f}% rssi {st.last_rssi}")
+    print("[LINK] " + " | ".join(parts))
+
+
 def udp_receiver():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -538,7 +564,14 @@ def udp_receiver():
         print(f"[UDP] Cannot bind to port {UDP_PORT}: {e}")
         return
 
+    last_stats = time.time()
+    last_frames = {}
     while True:
+        now = time.time()
+        if now - last_stats >= LINK_STATS_INTERVAL_S:
+            _log_link_stats(now - last_stats, last_frames)
+            last_stats = now
+
         try:
             data, addr = sock.recvfrom(4096)
         except socket.timeout:
@@ -555,14 +588,14 @@ def udp_receiver():
         # 2. Parse Binary Node Data (ESP32-S3)
         result = parser.parse(data)
 
-        if isinstance(result, VitalsPacket):
+        if isinstance(result, VitalsPacket):   # also covers FusedVitalsPacket
             nid = result.node_id
             if nid in [1, 2, 3]:
                 _node_vitals[nid]["motion"] = result.motion_energy
                 _node_vitals[nid]["breathing"] = result.breathing_bpm
-                _node_vitals[nid]["rssi"] = -70 # Default for vitals
+                _node_vitals[nid]["rssi"] = result.rssi
                 detector.update_node(
-                    node_id=nid, rssi=-70,
+                    node_id=nid, rssi=result.rssi,
                     motion=result.motion_energy,
                     breathing=result.breathing_bpm,
                 )
