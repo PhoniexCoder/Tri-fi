@@ -4,11 +4,10 @@
 # WASM3 is an MIT-licensed, lightweight interpreter (~100 KB flash, ~10 KB RAM)
 # optimized for embedded targets including Xtensa ESP32-S3.
 #
-# Pre-download WASM3 source before building:
+# The build downloads the official wasm3 v0.5.0 release and verifies its
+# SHA-256 before use. To provide it offline instead:
 #   cd firmware/esp32-csi-node/components/wasm3
-#   git clone --depth 1 https://github.com/wasm3/wasm3.git wasm3-src
-#
-# Or run: scripts/fetch-wasm3.sh
+#   git clone --depth 1 --branch v0.5.0 https://github.com/wasm3/wasm3.git wasm3-src
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -18,11 +17,14 @@ if(NOT EXISTS "${WASM3_DIR}/source/wasm3.h")
     message(STATUS "WASM3 source not found at ${WASM3_DIR}")
     message(STATUS "Attempting to download WASM3...")
 
-    # Try downloading inside build environment.
-    set(WASM3_URL "https://github.com/nicholasgasior/wasm3/archive/refs/heads/main.tar.gz")
+    # Official release, pinned by tag and verified by hash (a moving branch of
+    # a third-party fork was used before).
+    set(WASM3_URL "https://github.com/wasm3/wasm3/archive/refs/tags/v0.5.0.tar.gz")
+    set(WASM3_SHA256 "b778dd72ee2251f4fe9e2666ee3fe1c26f06f517c3ffce572416db067546536c")
     set(WASM3_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/wasm3.tar.gz")
 
     file(DOWNLOAD "${WASM3_URL}" "${WASM3_ARCHIVE}"
+         EXPECTED_HASH SHA256=${WASM3_SHA256}
          STATUS DOWNLOAD_STATUS TIMEOUT 30)
     list(GET DOWNLOAD_STATUS 0 DL_CODE)
 
