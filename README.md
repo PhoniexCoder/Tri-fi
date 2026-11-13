@@ -35,7 +35,7 @@ ESP32-S3 nodes ──UDP──► Python backend ──WebSocket──► React 
 | Packet decoder | `trifi/protocol.py` | Mirrors the firmware wire structs exactly |
 | Signal processing | `trifi/features.py` | Features and FFT breathing estimate |
 | Kit config | `config/kit.example.toml` | Ports, API token, node positions, thresholds |
-| Dashboard (React + Vite) | `ui/react-rescue/` | Dev server on port `3000` |
+| Dashboard (React + Vite) | `ui/react-rescue/` | Port `3000`: status banner, readiness checklist, map, node health, confidence chart, event log; light/dark; works on tablets and phones |
 | Rescuer badge (ESP8266) | `firmware/rescuer_esp8266.ino` | Optional heartbeat / confirm button |
 | Provisioning | `firmware/esp32-csi-node/provision.py` | Per-node WiFi, target, role (anchor/receiver) |
 | Tools | `scripts/` | Rescuer flashing, UDP sniffer, mmWave bridge |

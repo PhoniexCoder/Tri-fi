@@ -24,6 +24,7 @@ export function useTrifiSocket() {
   const [hello, setHello] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
+  const [receivedAt, setReceivedAt] = useState(null);
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -65,6 +66,7 @@ export function useTrifiSocket() {
           setError(null);
         } else if (msg.type === 'rescue_ai') {
           setSnapshot(msg);
+          setReceivedAt(Date.now());
         } else if (msg.type === 'error') {
           setError(msg.error);
         }
@@ -86,5 +88,5 @@ export function useTrifiSocket() {
     }
   }, []);
 
-  return { status, hello, snapshot, error, setMode };
+  return { status, hello, snapshot, error, receivedAt, setMode };
 }

@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Dashboard redesign for field use: one plain-language status banner with next step, confidence vs threshold, nodes agreeing and detection duration; system-readiness checklist ("Ready to search"); 60 s confidence chart with detection periods; event log; one card per node (health, rate, loss, signal, calibration, model, breathing); map with health-coloured nodes and an approximate survivor area; light/dark theme; layouts for desktop, tablet and phone; offline system fonts; data-freshness indicator.
 - `trifi` backend package replacing `examples/rescue_backend.py`: `python -m trifi run [--record]`, `replay SESSION [--speed]`, `check`.
 - Validated TOML kit config (`config/kit.example.toml`): ports, API token, node positions, thresholds, model and session paths.
 - Session recording (gzip JSONL of raw packets, mode and detection changes) and deterministic replay, live to the dashboard or in tests.
