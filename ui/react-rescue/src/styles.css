@@ -708,3 +708,108 @@ body {
   margin-top: 4px;
   border: 1px solid rgba(34, 197, 94, 0.2);
 }
+
+/* ── Dashboard v2 additions ─────────────────────────────────────────────── */
+
+.banner-error {
+  background: rgba(249, 115, 115, 0.15);
+  border-bottom: 1px solid var(--red);
+  color: var(--red);
+  padding: 6px 16px;
+  font-size: 12px;
+}
+
+.replay-badge {
+  border: 1px solid var(--orange);
+  color: var(--orange);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+}
+
+.mode-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bar-track {
+  position: relative;
+}
+
+.threshold-marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.8;
+}
+
+.bar-caption,
+.disclaimer {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.link-row {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: var(--bg-card);
+}
+
+.link-good { border-left-color: var(--green); }
+.link-weak { border-left-color: var(--orange); }
+.link-down { border-left-color: var(--red); }
+
+.link-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.link-head .node-name { flex: 1; }
+
+.link-state {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.link-metrics {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  margin: 4px 0;
+}
+
+.calib-track {
+  position: relative;
+  height: 14px;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.15);
+  overflow: hidden;
+  font-size: 10px;
+}
+
+.calib-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(251, 191, 36, 0.4);
+}
+
+.calib-track span {
+  position: relative;
+  padding-left: 6px;
+  line-height: 14px;
+}
+
+.calib-done {
+  font-size: 10px;
+  color: var(--green);
+}
