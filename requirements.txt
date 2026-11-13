@@ -1,16 +1,17 @@
-# Backend (examples/rescue_backend.py, csi_preprocessing.py)
-numpy>=1.24
-torch>=2.0
-torchvision>=0.15
-# Backend uses the legacy websockets.server API (deprecated); replace before upgrading past 16.x
-websockets>=12,<17
-h5py>=3.8
+# Backend runtime, pinned to the versions the test suite runs against.
+# Install: pip install -r requirements.txt
+numpy==1.26.4
+websockets==16.0
 
-# Legacy RSSI detector (examples/ml_inference_triangular.py loads scikit-learn pickles)
-joblib>=1.2
-scikit-learn>=1.2
+# Presence model (python -m trifi run / replay with a model). CPU-only wheels:
+#   pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cpu
+torch==2.7.1
+torchvision==0.22.1
 
-# Node tools (provision.py, mmwave_fusion_bridge.py)
-pyserial>=3.5
-esptool>=4.6
+# Node tools (firmware/esp32-csi-node/provision.py, scripts/mmwave_fusion_bridge.py)
+pyserial==3.5
+esptool==5.3.1
 esp-idf-nvs-partition-gen>=0.1
+
+# Optional: batch feature extraction from H5 training files (trifi.features.preprocess_batch)
+# h5py==3.13.0

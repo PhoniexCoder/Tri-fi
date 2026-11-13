@@ -12,16 +12,19 @@ Features extracted per time window:
     peak-to-noise ratio, breathing detected flag
 
 Usage (training):
-    from csi_preprocessing import preprocess_batch
+    from trifi.features import preprocess_batch
 
 Usage (real-time ESP32):
-    from csi_preprocessing import preprocess_realtime_csi
+    from trifi.features import preprocess_realtime_csi, get_breathing_info
+
+Known issue (Phase 4): the moving-average detrend in detect_breathing_fft()
+acts as a high-pass filter and attenuates the 0.1-0.5 Hz breathing band.
+Behaviour is kept unchanged here so replay regressions stay comparable.
 """
 
-import numpy as np
-import h5py
-from typing import Optional, Tuple, List
+from typing import Optional
 
+import numpy as np
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +64,8 @@ N_FEATURES = len(FEATURE_NAMES)
 
 def load_h5_amplitudes(filepath: str) -> np.ndarray:
     """Load CSI amplitude matrix from H5 file. Returns (n_subcarriers, n_timesteps)."""
+    import h5py  # only needed for batch training data
+
     with h5py.File(filepath, "r") as f:
         data = f["CSI_amps"][:]
     return data.squeeze(-1).astype(np.float32)
@@ -289,13 +294,13 @@ def extract_window_features(
 # ── Batch Processing (Training) ──────────────────────────────────────────────
 
 def preprocess_batch(
-    file_paths: List[str],
-    labels: List[int],
+    file_paths: list[str],
+    labels: list[int],
     window_size: int = 100,
     stride: Optional[int] = None,
     sample_rate: float = ASSUMED_SAMPLE_RATE,
     smoothing: bool = True,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Load and preprocess a batch of H5 files into feature matrix + labels.
 
@@ -314,7 +319,7 @@ def preprocess_batch(
     all_labels = []
     n_errors = 0
 
-    for i, (fp, label) in enumerate(zip(file_paths, labels)):
+    for i, (fp, label) in enumerate(zip(file_paths, labels, strict=False)):
         try:
             amps = load_h5_amplitudes(fp)
             if smoothing:

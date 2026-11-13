@@ -1,0 +1,40 @@
+[project]
+name = "trifi"
+version = "0.2.0"
+description = "WiFi CSI sensing backend for the TRI-FI survivor-search prototype"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "websockets>=13,<17",
+]
+
+[project.optional-dependencies]
+model = ["torch>=2.2", "torchvision>=0.17"]
+
+[project.scripts]
+trifi = "trifi.__main__:main"
+
+[tool.setuptools]
+packages = ["trifi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["ui", "firmware"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["UP007", "UP045"]   # keep Optional[...] readable
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["trifi"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true

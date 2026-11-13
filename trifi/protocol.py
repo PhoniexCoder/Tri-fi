@@ -161,6 +161,7 @@ class CSIFrameParser:
             return None
 
         magic = struct.unpack_from("<I", data, 0)[0]
+        result: ParseResult
         if magic == CSI_MAGIC_RAW:
             result = self._parse_raw(data)
         elif magic == CSI_MAGIC_VITALS:

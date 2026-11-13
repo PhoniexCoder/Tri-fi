@@ -1,0 +1,6 @@
+# Test and lint tooling. Torch is not needed: model-dependent tests skip without it.
+numpy==1.26.4
+websockets==16.0
+pytest==9.0.3
+ruff==0.16.1
+mypy==1.11.2

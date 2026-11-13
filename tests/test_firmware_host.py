@@ -4,7 +4,6 @@ import shutil
 import subprocess
 
 import pytest
-
 from conftest import FIRMWARE_DIR
 
 TEST_DIR = FIRMWARE_DIR / "test"

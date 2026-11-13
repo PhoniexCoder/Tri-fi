@@ -6,7 +6,6 @@ import io
 import re
 
 import pytest
-
 from conftest import FIRMWARE_DIR
 
 spec = importlib.util.spec_from_file_location("provision", FIRMWARE_DIR / "provision.py")

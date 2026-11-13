@@ -7,12 +7,22 @@ import subprocess
 
 import numpy as np
 import pytest
-
 from conftest import FIRMWARE_DIR
-from csi_frame_parser import (
-    CSI_HEADER_SIZE, CSI_MAGIC_ANCHOR, CSI_MAGIC_COMPRESSED, CSI_MAGIC_FUSED,
-    CSI_MAGIC_RAW, CSI_MAGIC_VITALS, CSI_MAGIC_WASM, FUSED_FMT, VITALS_FMT,
-    CSIFrame, CSIFrameParser, FusedVitalsPacket, VitalsPacket,
+
+from trifi.protocol import (
+    CSI_HEADER_SIZE,
+    CSI_MAGIC_ANCHOR,
+    CSI_MAGIC_COMPRESSED,
+    CSI_MAGIC_FUSED,
+    CSI_MAGIC_RAW,
+    CSI_MAGIC_VITALS,
+    CSI_MAGIC_WASM,
+    FUSED_FMT,
+    VITALS_FMT,
+    CSIFrame,
+    CSIFrameParser,
+    FusedVitalsPacket,
+    VitalsPacket,
 )
 
 TEST_DIR = FIRMWARE_DIR / "test"

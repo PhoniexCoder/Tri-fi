@@ -241,3 +241,5 @@ cython_debug/
 firmware/esp32-csi-node/build_firmware.bat
 
 archive/
+# Local kit configuration (may contain the API token)
+config/kit.toml
