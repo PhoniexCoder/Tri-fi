@@ -31,9 +31,10 @@ ESP32-S3 nodes ──UDP──► Python backend ──WebSocket──► React 
 | Part | Location | Notes |
 |---|---|---|
 | Node firmware (ESP-IDF, C) | `firmware/esp32-csi-node/` | CSI capture, on-chip breathing/heart-rate filters, presence and fall detection, NVS runtime config, OTA |
-| Backend (Python) | `examples/rescue_backend.py` | UDP `4444` in, WebSocket `8002` out |
-| Frame parser | `examples/csi_frame_parser.py` | Decodes node packets |
-| Signal processing | `csi_preprocessing.py` | Features and FFT breathing estimate |
+| Backend (Python) | `trifi/` | `python -m trifi`: UDP `4444` in, WebSocket `8002` out; record and replay sessions |
+| Packet decoder | `trifi/protocol.py` | Mirrors the firmware wire structs exactly |
+| Signal processing | `trifi/features.py` | Features and FFT breathing estimate |
+| Kit config | `config/kit.example.toml` | Ports, API token, node positions, thresholds |
 | Dashboard (React + Vite) | `ui/react-rescue/` | Dev server on port `3000` |
 | Rescuer badge (ESP8266) | `firmware/rescuer_esp8266.ino` | Optional heartbeat / confirm button |
 | Provisioning | `firmware/esp32-csi-node/provision.py` | Per-node WiFi, target, role (anchor/receiver) |
@@ -44,34 +45,39 @@ ESP32-S3 nodes ──UDP──► Python backend ──WebSocket──► React 
 
 - The backend's breathing filter suppresses the breathing band; one node is currently enough to report a detection.
 - Positions shown are a weighted average of node locations, not true localisation.
-- Control channels (UDP, WebSocket, OTA without a PSK) are unauthenticated.
+- Node UDP traffic and OTA (without a PSK) are unauthenticated; the dashboard WebSocket supports a token.
 
 ## Quick start
 
 ### Requirements
 
-- Python 3.10+ and Node.js 18+
+- Python 3.11+ and Node.js 18+
 - ESP-IDF v5.4 (only to build firmware)
 - 3 or more ESP32-S3 boards (only for live data)
 
 ### 1. Get the models
 
-Trained models and the recorded dataset are not stored in git. Download them from the project's GitHub Releases and place them in the repository root:
+Trained models and the recorded dataset are not stored in git. Download them from the project's GitHub Releases and unpack them into the repository root:
 
 ```
-model.pth                     # 6-class ResNet-18 (fallback)
-custom_presence_model.pth     # 2-class presence ResNet-18 (preferred)
-custom_dataset/               # recorded CSI sessions (.npy)
-examples/model_triangular_*.pkl   # legacy RSSI detector
+models/custom_presence_model.pth   # 2-class presence ResNet-18 (preferred)
+models/model.pth                   # 6-class ResNet-18 (fallback)
+custom_dataset/                    # recorded CSI (.npy)
 ```
+
+Without a model the backend still runs, using the legacy RSSI detector only.
 
 ### 2. Run the backend
 
 ```bash
 pip install -r requirements.txt
-cd examples
-python rescue_backend.py
+python -m trifi check                                # config + model preflight
+python -m trifi run                                  # live
+python -m trifi run --record                         # live, saving sessions/session-*.jsonl.gz
+python -m trifi replay sessions/<file>.jsonl.gz      # replay a session to the dashboard
 ```
+
+For a real kit, copy `config/kit.example.toml` to `config/kit.toml`, set an `api_token` and the node positions, and add `--config config/kit.toml` before the command.
 
 ### 3. Run the dashboard
 
@@ -81,7 +87,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The dashboard connects to `ws://localhost:8002` (override with `VITE_WS_URL`).
+Open `http://localhost:3000` (with a token: `http://localhost:3000/?token=<api_token>`). The dashboard connects to port 8002 on the same host (override with `VITE_WS_URL`), so a tablet on the kit network can open `http://<laptop-ip>:3000` directly.
 
 ### 4. Connect nodes (optional)
 
@@ -108,9 +114,18 @@ Repeat with `--node-id 2` and `--node-id 3`. On a Windows hotspot the laptop is 
 
 1. **Reset and secure** — repository cleanup. Done.
 2. **Data path** — correct decoders, one UDP port, fixed-rate anchor mode. Done, pending hardware verification.
-3. **Platform** — split the backend into tested stages with record/replay.
+3. **Platform** — backend split into tested stages, record/replay, dashboard v2, CI. Done.
 4. **Through-debris validation** — concrete-block test rig and measured detection rates.
 5. **Algorithms, productisation, pilot** — gated on step 4.
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+ruff check trifi tests && mypy && python -m pytest
+```
+
+CI (`.github/workflows/ci.yml`) runs these, builds the dashboard, and builds the firmware for 8 MB and 4 MB boards with ESP-IDF v5.4.
 
 ## Research background
 
