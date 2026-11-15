@@ -21,6 +21,10 @@
 /** Maximum channels in the hop list (must match CSI_HOP_CHANNELS_MAX). */
 #define NVS_CFG_HOP_MAX      6
 
+/** Node roles (NVS key "node_role"). */
+#define NODE_ROLE_RECEIVER   0   /**< Measures CSI and streams it (default). */
+#define NODE_ROLE_ANCHOR     1   /**< Broadcasts fixed-rate beacons only. */
+
 /** Runtime configuration loaded from NVS or Kconfig defaults. */
 typedef struct {
     char     wifi_ssid[NVS_CFG_SSID_MAX];
@@ -54,7 +58,12 @@ typedef struct {
     /* ADR-060: Channel override and MAC address filtering */
     uint8_t  csi_channel;                    /**< Explicit CSI channel override (0 = auto-detect). */
     uint8_t  filter_mac[6];                  /**< MAC address to filter CSI frames. */
-    uint8_t  filter_mac_set;                 /**< 1 if filter_mac was loaded from NVS. */
+    uint8_t  filter_mac_set;                 /**< 1 if filter_mac is set (NVS or anchor lock). */
+
+    /* Anchor mode */
+    uint8_t  node_role;                      /**< NODE_ROLE_RECEIVER or NODE_ROLE_ANCHOR. */
+    uint16_t anchor_hz;                      /**< Anchor beacon rate (10-200 Hz). */
+    uint8_t  anchor_lock;                    /**< Receiver: lock CSI filter to first anchor heard. */
 
     /* ADR-066: Swarm bridge configuration */
     char     seed_url[64];                /**< Cognitum Seed base URL (empty = disabled). */

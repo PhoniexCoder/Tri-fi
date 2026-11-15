@@ -8,6 +8,13 @@ so users can configure a pre-built firmware binary without recompiling.
 Usage:
     python provision.py --port COM7 --ssid "MyWiFi" --password "secret" --target-ip 192.168.1.20
 
+TRI-FI kit (one anchor + receivers on the laptop's hotspot or any 2.4 GHz network):
+    # Anchor: broadcasts 100 Hz beacons
+    python provision.py --port COM7 --role anchor --ssid KIT --password <pw> --node-id 0
+    # Receivers: stream CSI measured on the anchor's beacons
+    python provision.py --port COM8 --ssid KIT --password <pw> \
+        --target-ip <laptop-ip> --target-port 4444 --node-id 1
+
 Requirements:
     pip install esptool nvs-partition-gen
     (or use the nvs_partition_gen.py bundled with ESP-IDF)
@@ -28,6 +35,10 @@ import tempfile
 # 0x6000 (24576) bytes.
 NVS_PARTITION_OFFSET = 0x9000
 NVS_PARTITION_SIZE = 0x6000  # 24 KiB
+
+# Node roles (must match NODE_ROLE_* in main/nvs_config.h)
+ROLES = {"receiver": 0, "anchor": 1}
+ANCHOR_HZ_RANGE = (10, 200)
 
 
 def build_nvs_csv(args):
@@ -71,6 +82,18 @@ def build_nvs_csv(args):
         mac_bytes = bytes(int(b, 16) for b in args.filter_mac.split(":"))
         # NVS blob: write as hex-encoded string for CSV compatibility
         writer.writerow(["filter_mac", "data", "hex2bin", mac_bytes.hex()])
+    # Anchor mode
+    if args.role is not None:
+        writer.writerow(["node_role", "data", "u8", str(ROLES[args.role])])
+    if args.anchor_hz is not None:
+        writer.writerow(["anchor_hz", "data", "u16", str(args.anchor_hz)])
+    if args.anchor_lock is not None:
+        writer.writerow(["anchor_lock", "data", "u8", "1" if args.anchor_lock else "0"])
+    # ADR-040: WASM signature verification
+    if args.wasm_verify is not None:
+        writer.writerow(["wasm_verify", "data", "u8", "1" if args.wasm_verify else "0"])
+    if args.wasm_pubkey is not None:
+        writer.writerow(["wasm_pubkey", "data", "hex2bin", args.wasm_pubkey])
     # ADR-066: Swarm bridge configuration
     if args.seed_url is not None:
         writer.writerow(["seed_url", "data", "string", args.seed_url])
@@ -152,7 +175,7 @@ def flash_nvs(port, baud, nvs_bin):
         os.unlink(bin_path)
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(
         description="Provision ESP32-S3 CSI Node with WiFi and aggregator settings",
         epilog="Example: python provision.py --port COM7 --ssid MyWiFi --password secret --target-ip 192.168.1.20",
@@ -162,7 +185,7 @@ def main():
     parser.add_argument("--ssid", help="WiFi SSID")
     parser.add_argument("--password", help="WiFi password")
     parser.add_argument("--target-ip", help="Aggregator host IP (e.g. 192.168.1.20)")
-    parser.add_argument("--target-port", type=int, help="Aggregator UDP port (default: 5005)")
+    parser.add_argument("--target-port", type=int, help="Aggregator UDP port (default: 4444)")
     parser.add_argument("--node-id", type=int, help="Node ID 0-255 (default: 1)")
     # TDM mesh settings
     parser.add_argument("--tdm-slot", type=int, help="TDM slot index for this node (0-based)")
@@ -181,6 +204,25 @@ def main():
     parser.add_argument("--channel", type=int, help="CSI channel (1-14 for 2.4GHz, 36-177 for 5GHz). "
                         "Overrides auto-detection from connected AP.")
     parser.add_argument("--filter-mac", type=str, help="MAC address to filter CSI frames (AA:BB:CC:DD:EE:FF)")
+    # Anchor mode
+    parser.add_argument("--role", choices=sorted(ROLES),
+                        help="receiver (default): measure and stream CSI; "
+                             "anchor: broadcast fixed-rate beacons for the receivers")
+    parser.add_argument("--anchor-hz", type=int,
+                        help=f"Anchor beacon rate in Hz, {ANCHOR_HZ_RANGE[0]}-{ANCHOR_HZ_RANGE[1]} (default: 100)")
+    lock_group = parser.add_mutually_exclusive_group()
+    lock_group.add_argument("--anchor-lock", dest="anchor_lock", action="store_true", default=None,
+                            help="Receiver locks its CSI filter to the first anchor heard (default)")
+    lock_group.add_argument("--no-anchor-lock", dest="anchor_lock", action="store_false",
+                            help="Receiver captures CSI from all transmitters")
+    # ADR-040: WASM signature verification
+    verify_group = parser.add_mutually_exclusive_group()
+    verify_group.add_argument("--wasm-verify", dest="wasm_verify", action="store_true", default=None,
+                              help="Require Ed25519 signatures on WASM uploads (default)")
+    verify_group.add_argument("--no-wasm-verify", dest="wasm_verify", action="store_false",
+                              help="Accept unsigned WASM uploads (lab use only)")
+    parser.add_argument("--wasm-pubkey", type=str,
+                        help="Ed25519 public key for WASM signatures, 64 hex characters")
     # ADR-066: Swarm bridge
     parser.add_argument("--seed-url", type=str, help="Cognitum Seed base URL (e.g. http://10.1.10.236)")
     parser.add_argument("--seed-token", type=str, help="Seed Bearer token (from pairing)")
@@ -188,9 +230,11 @@ def main():
     parser.add_argument("--swarm-hb", type=int, help="Swarm heartbeat interval in seconds (default 30)")
     parser.add_argument("--swarm-ingest", type=int, help="Swarm vector ingest interval in seconds (default 5)")
     parser.add_argument("--dry-run", action="store_true", help="Generate NVS binary but don't flash")
+    return parser
 
-    args = parser.parse_args()
 
+def validate_args(parser, args):
+    """Check argument combinations; exits via parser.error on problems."""
     has_value = any([
         args.ssid, args.password is not None, args.target_ip,
         args.target_port, args.node_id is not None,
@@ -200,9 +244,25 @@ def main():
         args.vital_int is not None, args.subk_count is not None,
         args.channel is not None, args.filter_mac is not None,
         args.seed_url is not None, args.zone is not None,
+        args.role is not None, args.anchor_hz is not None,
+        args.anchor_lock is not None, args.wasm_verify is not None,
+        args.wasm_pubkey is not None,
     ])
     if not has_value:
         parser.error("At least one config value must be specified")
+
+    # Anchor mode
+    if args.anchor_hz is not None:
+        lo, hi = ANCHOR_HZ_RANGE
+        if not lo <= args.anchor_hz <= hi:
+            parser.error(f"--anchor-hz must be {lo}-{hi}, got {args.anchor_hz}")
+    if args.role == "anchor" and (args.target_ip or args.target_port):
+        print("Note: an anchor does not stream CSI; --target-ip/--target-port are stored but unused.")
+    if args.wasm_pubkey is not None:
+        pk = args.wasm_pubkey.strip().lower()
+        if len(pk) != 64 or any(c not in "0123456789abcdef" for c in pk):
+            parser.error("--wasm-pubkey must be exactly 64 hex characters (32 bytes)")
+        args.wasm_pubkey = pk
 
     # Validate TDM: if one is given, both should be
     if (args.tdm_slot is not None) != (args.tdm_total is not None):
@@ -226,7 +286,23 @@ def main():
         except ValueError:
             parser.error(f"--filter-mac contains invalid hex bytes: '{args.filter_mac}'")
 
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    validate_args(parser, args)
+
     print("Building NVS configuration:")
+    if args.role is not None:
+        print(f"  Role:          {args.role}")
+    if args.anchor_hz is not None:
+        print(f"  Anchor Rate:   {args.anchor_hz} Hz")
+    if args.anchor_lock is not None:
+        print(f"  Anchor Lock:   {'on' if args.anchor_lock else 'off'}")
+    if args.wasm_verify is not None:
+        print(f"  WASM Verify:   {'enabled' if args.wasm_verify else 'disabled'}")
+    if args.wasm_pubkey is not None:
+        print(f"  WASM Pubkey:   {args.wasm_pubkey[:8]}...{args.wasm_pubkey[-8:]}")
     if args.ssid:
         print(f"  WiFi SSID:     {args.ssid}")
     if args.password is not None:

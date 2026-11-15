@@ -1,5 +1,0 @@
-{
-  "version": "v4_calibrated",
-  "scaler_path": "model_triangular_scaler.pkl",
-  "model_presence": "model_triangular_presence.pkl"
-}

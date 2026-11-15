@@ -646,8 +646,8 @@ static void process_frame(const edge_ring_slot_t *slot)
     s_frame_count++;
     s_latest_rssi = slot->rssi;
 
-    /* Assumed CSI sample rate (~20 Hz for typical ESP32 CSI). */
-    const float sample_rate = 20.0f;
+    /* Frames are paced to EDGE_SAMPLE_RATE_HZ by csi_collector.c. */
+    const float sample_rate = (float)EDGE_SAMPLE_RATE_HZ;
 
     /* --- Step 1-2: Phase extraction + unwrapping per subcarrier --- */
     float phases[EDGE_MAX_SUBCARRIERS];
@@ -961,9 +961,8 @@ esp_err_t edge_processing_init(const edge_config_t *cfg)
         s_persons[p].active = false;
     }
 
-    /* Design biquad bandpass filters.
-     * Sampling rate ~20 Hz (typical ESP32 CSI callback rate). */
-    const float fs = 20.0f;
+    /* Design biquad bandpass filters for the paced input rate. */
+    const float fs = (float)EDGE_SAMPLE_RATE_HZ;
     biquad_bandpass_design(&s_bq_breathing, fs, 0.1f, 0.5f);
     biquad_bandpass_design(&s_bq_heartrate, fs, 0.8f, 2.0f);
 

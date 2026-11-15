@@ -1,0 +1,33 @@
+# TRI-FI kit configuration. Copy to config/kit.toml (git-ignored) and edit.
+# Run with: python -m trifi --config config/kit.toml run
+# Every key is optional; omitted keys use the defaults shown here.
+
+[network]
+udp_host = "0.0.0.0"      # where receiver nodes send CSI
+udp_port = 4444
+ws_host = "0.0.0.0"       # dashboard WebSocket
+ws_port = 8002
+api_token = ""            # set a long random string; dashboard opens with ?token=<value>
+
+# Receiver node positions on the unit map (x, y in 0..1). Node 0 is the anchor.
+[nodes]
+1 = [0.0, 0.0]
+2 = [1.0, 0.0]
+3 = [0.5, 1.0]
+
+[detection]
+op_mode = 0                       # 0 = AI, 1 = legacy RSSI, 2 = 50/50 blend
+window_frames = 100               # frames per model window
+breathing_window_frames = 3000    # frame buffer; the last 30 s are analysed (needs >= 30 s x node rate)
+node_detect_threshold = 0.45
+ui_detect_threshold = 0.30
+broadcast_hz = 5.0
+
+[models]
+dir = "../models"                 # relative to this file
+presence_model = "custom_presence_model.pth"
+fallback_model = "model.pth"
+
+[recording]
+enabled = false                   # or pass --record
+dir = "../sessions"

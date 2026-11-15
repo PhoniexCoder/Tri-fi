@@ -50,7 +50,32 @@ static uint32_t s_rate_skip = 0;
  * Default: 20 ms = 50 Hz max send rate.
  */
 #define CSI_MIN_SEND_INTERVAL_US  (20 * 1000)
+
+/**
+ * With a MAC filter active only the chosen transmitter (e.g. the anchor at a
+ * fixed 100 Hz) reaches the send path, so allow up to 200 Hz.
+ */
+#define CSI_MIN_SEND_INTERVAL_FILTERED_US  (5 * 1000)
 static int64_t s_last_send_us = 0;
+
+/** Pacer state for feeding the edge DSP at EDGE_SAMPLE_RATE_HZ. */
+static int64_t s_next_edge_us = 0;
+
+bool csi_pace_accept(int64_t now_us, int64_t period_us, int64_t *next_us)
+{
+    if (*next_us == 0 || now_us - *next_us > period_us) {
+        *next_us = now_us;   /* First frame, or the source paused: resync. */
+    }
+    /* Accept up to half a period early so jitter in a source that is no
+     * faster than the target does not cost frames. The schedule still
+     * advances one period per accepted frame, so the long-run average
+     * never exceeds 1/period. */
+    if (now_us < *next_us - period_us / 2) {
+        return false;
+    }
+    *next_us += period_us;
+    return true;
+}
 
 /* ---- ADR-029: Channel-hop state ---- */
 
@@ -179,7 +204,10 @@ static void wifi_csi_callback(void *ctx, wifi_csi_info_t *info)
          * In promiscuous mode, CSI callbacks can fire 100-500+ times/sec.
          * We only need 20-50 Hz for the sensing pipeline. */
         int64_t now = esp_timer_get_time();
-        if ((now - s_last_send_us) >= CSI_MIN_SEND_INTERVAL_US) {
+        int64_t min_interval = g_nvs_config.filter_mac_set
+                                   ? CSI_MIN_SEND_INTERVAL_FILTERED_US
+                                   : CSI_MIN_SEND_INTERVAL_US;
+        if ((now - s_last_send_us) >= min_interval) {
             int ret = stream_sender_send(frame_buf, frame_len);
             if (ret > 0) {
                 s_send_ok++;
@@ -195,8 +223,10 @@ static void wifi_csi_callback(void *ctx, wifi_csi_info_t *info)
         }
     }
 
-    /* ADR-039: Enqueue raw I/Q into edge processing ring buffer. */
-    if (info->buf && info->len > 0) {
+    /* ADR-039: Enqueue raw I/Q into edge processing ring buffer, paced to the
+     * fixed rate the DSP filters are designed for. */
+    if (info->buf && info->len > 0 &&
+        csi_pace_accept(esp_timer_get_time(), EDGE_SAMPLE_PERIOD_US, &s_next_edge_us)) {
         edge_enqueue_csi((const uint8_t *)info->buf, (uint16_t)info->len,
                          (int8_t)info->rx_ctrl.rssi, info->rx_ctrl.channel);
     }

@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include "esp_err.h"
 #include "esp_wifi_types.h"
 
@@ -38,6 +39,20 @@ void csi_collector_init(void);
  * @return Number of bytes written, or 0 on error.
  */
 size_t csi_serialize_frame(const wifi_csi_info_t *info, uint8_t *buf, size_t buf_len);
+
+/**
+ * Rate pacer: accept frames so the long-run average equals one per period.
+ *
+ * Used to feed the edge DSP at exactly EDGE_SAMPLE_RATE_HZ regardless of how
+ * fast CSI callbacks arrive. Sources slower than the target pass through
+ * unchanged; after a pause longer than one period the schedule resyncs.
+ *
+ * @param now_us     Current time in microseconds.
+ * @param period_us  Target period in microseconds.
+ * @param next_us    Pacer state; initialise to 0.
+ * @return true if this frame should be accepted.
+ */
+bool csi_pace_accept(int64_t now_us, int64_t period_us, int64_t *next_us);
 
 /**
  * Configure the channel-hop table for multi-band sensing (ADR-029).

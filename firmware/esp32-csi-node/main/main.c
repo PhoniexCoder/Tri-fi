@@ -29,6 +29,7 @@
 #include "display_task.h"
 #include "mmwave_sensor.h"
 #include "swarm_bridge.h"
+#include "anchor.h"
 
 
 #include "esp_timer.h"
@@ -108,6 +109,14 @@ static void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
+    /* The STA default (WIFI_PS_MIN_MODEM) dozes between AP beacons, which drops
+     * fixed-rate anchor frames on both ends. Keep the radio awake; a duty cycle
+     * below 100% (power_mgmt_init) re-enables modem sleep deliberately. */
+    esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (ps_err != ESP_OK) {
+        ESP_LOGW(TAG, "Could not disable WiFi power save: %s", esp_err_to_name(ps_err));
+    }
+
     ESP_LOGI(TAG, "WiFi STA initialized, connecting to SSID: %s", g_nvs_config.wifi_ssid);
 
     /* Wait for connection */
@@ -119,6 +128,37 @@ static void wifi_init_sta(void)
         ESP_LOGI(TAG, "Connected to WiFi");
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGE(TAG, "Failed to connect to WiFi after %d retries", MAX_RETRY);
+    }
+}
+
+/**
+ * Anchor role: broadcast fixed-rate beacons for the receivers to measure.
+ * No CSI capture, edge DSP or UDP streaming; OTA stays available.
+ */
+static void run_anchor(void)
+{
+    /* If the station failed to connect, still transmit on the configured channel. */
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+        uint8_t ch = g_nvs_config.csi_channel ? g_nvs_config.csi_channel
+                                              : (uint8_t)CONFIG_CSI_WIFI_CHANNEL;
+        ESP_LOGW(TAG, "Anchor not associated; transmitting on channel %u", (unsigned)ch);
+        esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+    }
+
+    esp_err_t err = anchor_start(g_nvs_config.node_id, g_nvs_config.anchor_hz);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Anchor start failed: %s", esp_err_to_name(err));
+    }
+
+    httpd_handle_t ota_server = NULL;
+    if (ota_update_init_ex(&ota_server) != ESP_OK) {
+        ESP_LOGW(TAG, "OTA server init failed");
+    }
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        anchor_log_stats();
     }
 }
 
@@ -139,12 +179,24 @@ void app_main(void)
 
     wifi_init_sta();
 
+    if (g_nvs_config.node_role == NODE_ROLE_ANCHOR) {
+        ESP_LOGI(TAG, "Role: anchor (%u Hz beacons)", (unsigned)g_nvs_config.anchor_hz);
+        run_anchor();   /* Does not return. */
+    }
+
     if (stream_sender_init_with(g_nvs_config.target_ip, g_nvs_config.target_port) != 0) {
         ESP_LOGE(TAG, "Failed to initialize UDP sender");
         return;
     }
 
     csi_collector_init();
+
+    /* Lock the CSI filter onto the kit's anchor once its first beacon arrives. */
+    if (g_nvs_config.anchor_lock && !g_nvs_config.filter_mac_set) {
+        if (anchor_listen_start() != ESP_OK) {
+            ESP_LOGW(TAG, "Anchor listener unavailable; capturing CSI from all transmitters");
+        }
+    }
 
     /* ADR-039: Initialize edge processing pipeline. */
     edge_config_t edge_cfg = {

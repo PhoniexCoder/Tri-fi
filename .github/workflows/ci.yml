@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Backend (lint, types, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check trifi tests
+      - run: mypy
+      # gcc on the runner builds the firmware host tests; torch-dependent tests skip.
+      - run: python -m pytest -v
+
+  dashboard:
+    name: Dashboard build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui/react-rescue
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/react-rescue/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  firmware:
+    name: Firmware (${{ matrix.flash }})
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flash: 8MB
+            defaults: sdkconfig.defaults.template
+          - flash: 4MB
+            defaults: sdkconfig.defaults.4mb
+    defaults:
+      run:
+        shell: bash
+        working-directory: firmware/esp32-csi-node
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          . "$IDF_PATH/export.sh"
+          cp "${{ matrix.defaults }}" sdkconfig.defaults
+          idf.py set-target esp32s3
+          idf.py build
+      - name: Size
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py size
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.flash }}
+          retention-days: 14
+          path: |
+            firmware/esp32-csi-node/build/esp32-csi-node.bin
+            firmware/esp32-csi-node/build/bootloader/bootloader.bin
+            firmware/esp32-csi-node/build/partition_table/partition-table.bin
+            firmware/esp32-csi-node/build/ota_data_initial.bin

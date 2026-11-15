@@ -43,7 +43,7 @@
 
 #define WASM_MAX_MODULE_SIZE (128 * 1024)  /**< Max .wasm binary size (128 KB). */
 #define WASM_STACK_SIZE      (8 * 1024)    /**< WASM execution stack (8 KB). */
-#define WASM_OUTPUT_MAGIC    0xC5110004    /**< WASM output packet magic. */
+#define WASM_OUTPUT_MAGIC    0xC5110005    /**< WASM output packet magic (0xC5110004 is EDGE_FUSED_MAGIC). */
 #define WASM_MAX_EVENTS      16            /**< Max events per output packet. */
 
 /* ---- WASM Event (5 bytes: u8 type + f32 value) ---- */
@@ -54,7 +54,7 @@ typedef struct __attribute__((packed)) {
 
 /* ---- WASM Output Packet ---- */
 typedef struct __attribute__((packed)) {
-    uint32_t magic;         /**< WASM_OUTPUT_MAGIC = 0xC5110004. */
+    uint32_t magic;         /**< WASM_OUTPUT_MAGIC = 0xC5110005. */
     uint8_t  node_id;       /**< ESP32 node identifier. */
     uint8_t  module_id;     /**< Module slot index. */
     uint16_t event_count;   /**< Number of events in this packet. */
