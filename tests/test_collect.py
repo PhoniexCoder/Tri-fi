@@ -50,7 +50,34 @@ def test_label_fields_are_validated(data, error):
 def test_label_defaults():
     assert labels.validate_fields({"label": "empty"})[0]["people"] == 0
     assert labels.validate_fields({"label": "present", "setup": " behind brick wall "})[0] == {
-        "label": "present", "people": 1, "activity": "", "setup": "behind brick wall"}
+        "label": "present", "people": 1, "activity": "", "setup": "behind brick wall", "place": ""}
+    # an empty area has no position
+    assert labels.validate_fields({"label": "empty", "place": "centre"})[0]["place"] == ""
+    assert "position" in labels.validate_fields({"label": "present", "place": "roof"})[1]
+
+
+@pytest.mark.parametrize("label,people,activity,place,cls", [
+    ("empty", 0, "", "", 0),
+    ("present", 1, "still", "", 1),
+    ("present", 1, "breathing", "perimeter", 1),
+    ("present", 1, "moving", "centre", 2),
+    ("present", 1, "moving", "perimeter", 3),
+    ("present", 2, "still", "centre", 4),
+    ("present", 2, "moving", "", 5),
+])
+def test_six_class_mapping_matches_the_april_dataset(label, people, activity, place, cls):
+    assert labels.six_class(label, people, activity, place) == (cls, "")
+    assert labels.DATASET_CLASSES[cls][0] == people
+
+
+@pytest.mark.parametrize("people,activity,place,why", [
+    (1, "", "", "activity not set"),
+    (1, "moving", "", "position"),
+    (3, "still", "", "3 or more"),
+])
+def test_six_class_says_why_a_range_has_no_class(people, activity, place, why):
+    cls, reason = labels.six_class("present", people, activity, place)
+    assert cls is None and why in reason
 
 
 def test_ranges_must_fit_the_recording():
@@ -194,6 +221,8 @@ def test_label_after_recording(recorded):
     assert "unknown recording" in dc.handle(sneaky)
     seg = labels.LabelFile(recorded).segments[0]
     assert dc.handle({"type": "label_update", "session": NAME, "id": seg.id, "setup": "door closed"}) is None
+    state = dc.state()
+    assert state["places"] == ["centre", "perimeter"] and state["classes6"]["2"].startswith("one person")
     assert labels.LabelFile(recorded).find(seg.id).setup == "door closed"
     row = dc.state()["sessions"][0]
     assert row["labelled"]["empty"] == pytest.approx(18.0) and row["segments"][0]["setup"] == "door closed"
@@ -214,6 +243,26 @@ def test_export_writes_training_files_and_manifest(recorded, tmp_path):
     assert a.shape[1] == 64 and a.dtype == np.float32 and 1500 <= len(a) <= 1700   # ~16 s at 100 Hz
     rows = list(csv.DictReader(open(out / "manifest.csv", encoding="utf-8")))
     assert {r["class"] for r in rows} == {"0", "1"} and {r["node"] for r in rows} == {"1", "2", "3"}
+    lf.segments = []
+    lf.save()
+
+
+def test_export_six_classes_skips_ranges_without_a_class(recorded, tmp_path):
+    lf = labels.LabelFile(recorded)
+    lf.segments = []
+    lf.add(T0 + 2, T0 + 12, {"label": "empty", "people": 0, "activity": "", "setup": "", "place": ""})
+    lf.add(T0 + 22, T0 + 30, {"label": "present", "people": 1, "activity": "moving", "setup": "",
+                              "place": "perimeter"})
+    lf.add(T0 + 31, T0 + 38, {"label": "present", "people": 1, "activity": "moving", "setup": "",
+                              "place": ""})
+    out = tmp_path / "six"
+    stats = export_dataset([recorded], out, classes=6)
+    assert stats["segments"] == 2 and stats["files"] == 6
+    assert stats["skipped"] == {"one person moving needs a position (centre or near nodes)": 1}
+    assert len(list(out.glob("node*_label0_*.npy"))) == 3 and len(list(out.glob("node*_label3_*.npy"))) == 3
+    rows = list(csv.DictReader(open(out / "manifest.csv", encoding="utf-8")))
+    assert {r["scheme"] for r in rows} == {"6"} and {r["place"] for r in rows} == {"", "perimeter"}
+    assert labels.LabelFile(recorded).segments[1].to_dict()["class6"] == 3
     lf.segments = []
     lf.save()
 

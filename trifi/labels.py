@@ -38,6 +38,24 @@ DATASET_CLASSES: dict[int, tuple[int, str]] = {
 }
 
 
+def six_class(label: str, people: int, activity: str, place: str) -> tuple[Optional[int], str]:
+    """DATASET_CLASSES index for a labelled range, or (None, why it has none)."""
+    if label == "empty":
+        return 0, ""
+    if people > 2:
+        return None, "3 or more people (the six classes stop at 2)"
+    if activity not in ("still", "breathing", "moving"):
+        return None, "activity not set"
+    moving = activity == "moving"
+    if people == 2:
+        return (5 if moving else 4), ""
+    if not moving:
+        return 1, ""
+    if place not in ("centre", "perimeter"):
+        return None, "one person moving needs a position (centre or near nodes)"
+    return (2 if place == "centre" else 3), ""
+
+
 def people_for_class(cls: int, n_classes: int) -> int:
     """People count a model's predicted class stands for."""
     if cls == 0:
@@ -46,6 +64,7 @@ def people_for_class(cls: int, n_classes: int) -> int:
         return DATASET_CLASSES.get(cls, (1, ""))[0]
     return 1            # presence model: 1 = someone is there; it can't count
 ACTIVITIES = ("", "still", "breathing", "moving")
+PLACES = ("", "centre", "perimeter")             # where in the area; perimeter = near the nodes
 MAX_PEOPLE = 20
 MAX_SETUP_CHARS = 200
 MAX_SEGMENTS = 2000
@@ -98,9 +117,12 @@ class Segment:
     people: int
     activity: str = ""
     setup: str = ""
+    place: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["class6"] = six_class(self.label, self.people, self.activity, self.place)[0]
+        return d
 
 
 def _num(v: Any) -> Optional[float]:
@@ -122,10 +144,16 @@ def validate_fields(data: dict[str, Any]) -> tuple[Optional[dict[str, Any]], Opt
     activity = data.get("activity", "")
     if activity not in ACTIVITIES:
         return None, f"activity must be one of {', '.join(a for a in ACTIVITIES if a)} or blank"
+    place = data.get("place", "")
+    if place not in PLACES:
+        return None, "position must be centre, perimeter or blank"
+    if label == "empty":
+        place = ""
     setup = data.get("setup", "")
     if not isinstance(setup, str) or len(setup) > MAX_SETUP_CHARS or any(ord(c) < 32 for c in setup):
         return None, f"setup notes must be plain text, at most {MAX_SETUP_CHARS} characters"
-    return {"label": label, "people": people, "activity": activity, "setup": setup.strip()}, None
+    return {"label": label, "people": people, "activity": activity, "setup": setup.strip(),
+            "place": place}, None
 
 
 def validate_range(data: dict[str, Any], first: Optional[float],
@@ -152,7 +180,7 @@ class LabelFile:
                 self.segments.append(Segment(
                     id=str(s["id"]), start=float(s["start"]), end=end, label=str(s["label"]),
                     people=int(s.get("people", 0)), activity=str(s.get("activity", "")),
-                    setup=str(s.get("setup", ""))))
+                    setup=str(s.get("setup", "")), place=str(s.get("place", ""))))
             except (KeyError, TypeError, ValueError):
                 continue        # skip a hand-edited entry we can't read
 

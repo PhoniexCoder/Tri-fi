@@ -39,3 +39,17 @@ export function sessionDate(name) {
 export const LABEL_TEXT = { empty: 'Empty', present: 'Person present' };
 export const LABEL_COLOR = { empty: 'var(--series-1)', present: 'var(--series-2)' };
 export const ACTIVITY_TEXT = { '': '—', still: 'Still', breathing: 'Breathing', moving: 'Moving' };
+export const PLACE_TEXT = { '': '—', centre: 'Centre', perimeter: 'Near nodes' };
+
+/** Same rule as six_class() in trifi/labels.py: the custom_dataset/ class for a label, or why none. */
+export function sixClass({ label, people, activity, place }) {
+  if (label === 'empty') return { cls: 0, why: '' };
+  const n = Number(people) || 0;
+  if (n > 2) return { cls: null, why: '3 or more people (the six classes stop at 2)' };
+  if (!['still', 'breathing', 'moving'].includes(activity)) return { cls: null, why: 'set the activity' };
+  const moving = activity === 'moving';
+  if (n === 2) return { cls: moving ? 5 : 4, why: '' };
+  if (!moving) return { cls: 1, why: '' };
+  if (!['centre', 'perimeter'].includes(place)) return { cls: null, why: 'set where the person is moving' };
+  return { cls: place === 'centre' ? 2 : 3, why: '' };
+}
