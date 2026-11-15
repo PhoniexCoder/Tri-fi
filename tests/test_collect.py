@@ -139,6 +139,23 @@ def test_record_button_starts_and_stops_a_recording(tmp_path):
     assert not state["recording"]["active"] and state["sessions"][0]["name"] == path.name
 
 
+def test_delete_recording_removes_file_and_sidecars_but_not_the_live_one(tmp_path):
+    sent = []
+    dc = DataCollection(replace(Config(), session_dir=tmp_path), None, broadcast=sent.append)
+    dc.handle({"type": "record_start"})
+    first = dc.recorder.path
+    dc.recorder.packet(1.0, "10.0.0.1:5", b"x")
+    assert "stop the recording" in dc.handle({"type": "recording_delete", "session": first.name})
+    dc.handle({"type": "label_start", "label": "empty"})
+    dc.handle({"type": "record_stop"})
+    assert labels.labels_path(first).exists() and labels.meta_path(first).exists()
+    assert dc.handle({"type": "recording_delete", "session": first.name}) is None
+    assert not any(p.exists() for p in (first, labels.labels_path(first), labels.meta_path(first)))
+    assert sent[-1]["sessions"] == []
+    assert dc.handle({"type": "recording_delete", "session": first.name}) == "unknown recording"
+    assert dc.handle({"type": "recording_delete", "session": "../" + first.name}) == "unknown recording"
+
+
 def test_a_recording_with_no_packets_is_discarded(tmp_path):
     dc = DataCollection(replace(Config(), session_dir=tmp_path), None, broadcast=lambda m: None)
     dc.handle({"type": "record_start"})

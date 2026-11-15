@@ -240,3 +240,23 @@
 .live-label:disabled {
   opacity: 0.5;
 }
+
+.btn-danger {
+  background: var(--alert);
+  border-color: var(--alert);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--alert);
+  filter: brightness(1.1);
+}
+.inline-alert.confirm {
+  align-items: center;
+  margin: 0 0 14px;
+}
+.inline-alert.confirm .btn {
+  margin-left: 0;
+}
+.inline-alert.confirm > span {
+  flex: 1;
+}

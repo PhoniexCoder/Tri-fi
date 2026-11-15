@@ -91,7 +91,7 @@ export function useTrifiSocket() {
           setData(msg);
         } else if (msg.type === 'error') {
           if (typeof msg.request === 'string' && msg.request.startsWith('setup_')) setSetupError({ text: msg.error, at: Date.now() });
-          else if (typeof msg.request === 'string' && (msg.request.startsWith('label_') || msg.request === 'data_refresh')) setDataError({ text: msg.error, at: Date.now() });
+          else if (typeof msg.request === 'string' && (msg.request.startsWith('label_') || msg.request.startsWith('record') || msg.request === 'data_refresh')) setDataError({ text: msg.error, at: Date.now() });
           else setError(msg.error);
         }
       };

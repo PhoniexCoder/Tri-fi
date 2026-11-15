@@ -16,7 +16,7 @@ Client -> server:
   {"type": "set_op_mode", "mode": 0|1|2}
   {"type": "setup_probe" | "setup_flash", ...}   laptop-local clients only
   {"type": "record_start" | "record_stop" | "label_start" | "label_stop" | "label_add" |
-           "label_update" | "label_delete" | "data_refresh", ...}   recordings and labels
+           "label_update" | "label_delete" | "recording_delete" | "data_refresh", ...}
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 MAX_MESSAGE_BYTES = 4096
 DATA_MESSAGES = {"record_start", "record_stop", "label_start", "label_stop", "label_add",
-                 "label_update", "label_delete", "data_refresh"}
+                 "label_update", "label_delete", "recording_delete", "data_refresh"}
 LOCAL_HOSTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 

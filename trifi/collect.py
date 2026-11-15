@@ -10,6 +10,7 @@ Dashboard -> backend:
   {"type": "label_add", "session": name, "start": t, "end": t, ...fields}
   {"type": "label_update", "session": name, "id": id, ...fields and/or start/end}
   {"type": "label_delete", "session": name, "id": id}
+  {"type": "recording_delete", "session": name}  delete a finished recording and its sidecars
   {"type": "data_refresh"}                     re-scan the recordings folder
 
 Backend -> dashboard: {"type": "data_state", ...} whenever something changes,
@@ -167,6 +168,20 @@ class DataCollection:
         self.push()
         return None
 
+    def delete_recording(self, name: Any) -> Optional[str]:
+        path = labels.resolve_session(self.cfg.session_dir, name)
+        if path is None:
+            return "unknown recording"
+        if self.recorder and path == self.recorder.path:
+            return "stop the recording before deleting it"
+        for p in (labels.labels_path(path), labels.meta_path(path), path):
+            p.unlink(missing_ok=True)
+        self._meta_cache.pop(path.name, None)
+        self._rows = [r for r in self._rows if r["name"] != path.name]
+        log.info("Recording deleted: %s", path.name)
+        self.push()
+        return None
+
     # ── requests ──────────────────────────────────────────────────────────────
 
     def handle(self, data: dict[str, Any]) -> Optional[str]:
@@ -176,6 +191,8 @@ class DataCollection:
                 return self.start_recording()
             if kind == "record_stop":
                 return self.stop_recording()
+            if kind == "recording_delete":
+                return self.delete_recording(data.get("session"))
             if kind == "data_refresh":
                 asyncio.ensure_future(self._rescan_and_push())
                 return None

@@ -31,11 +31,12 @@ export default function DataView({ ctx }) {
   const [editing, setEditing] = useState(null);        // segment id, 'new', or null
   const [form, setForm] = useState({ ...EMPTY_FIELDS, start: '', end: '' });
   const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const sessions = data?.sessions ?? [];
   const rec = data?.recording;
   const row = sessions.find((s) => s.name === selected) ?? sessions[0] ?? null;
 
-  useEffect(() => { setEditing(null); }, [row?.name]);
+  useEffect(() => { setEditing(null); setConfirmDelete(false); }, [row?.name]);
 
   if (status !== 'online') return <div className="card empty-boards"><h3 className="card-title">Backend not connected</h3><p className="card-sub">Start it with python -m trifi run.</p></div>;
   if (!data) return <div className="card empty-boards"><h3 className="card-title">Recordings are off during a replay</h3><p className="card-sub">Run the live backend (python -m trifi run) to record and label data.</p></div>;
@@ -157,7 +158,7 @@ export default function DataView({ ctx }) {
                   <td className="num">{s.segments.length}</td>
                 </tr>
               ))}
-              {!sessions.length && <tr><td colSpan={5} className="muted">No recordings yet. They appear here as soon as the backend runs live.</td></tr>}
+              {!sessions.length && <tr><td colSpan={5} className="muted">No recordings yet. Press Record to start one.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -170,8 +171,22 @@ export default function DataView({ ctx }) {
               <h3 id="detail-title" className="card-title">{sessionDate(row.name)}</h3>
               <p className="card-sub"><code>{row.name}</code> · {hms(row.duration)} · {(row.packets ?? 0).toLocaleString()} packets from {row.sources ?? '—'} {row.sources === 1 ? 'device' : 'devices'}</p>
             </div>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => startEdit(null)} disabled={!row.duration}><Icon name="edit" size={14} /> Add a labelled range</button>
+            <div className="btn-group">
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => startEdit(null)} disabled={!row.duration}><Icon name="edit" size={14} /> Add a labelled range</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(true)} disabled={row.live}
+                title={row.live ? 'Stop the recording before deleting it' : 'Delete this recording and its labels'}>
+                <Icon name="trash" size={14} /> Delete recording
+              </button>
+            </div>
           </header>
+          {confirmDelete && (
+            <div className="inline-alert inline-bad confirm" role="alertdialog" aria-labelledby="del-q">
+              <Icon name="warn" size={16} />
+              <span id="del-q">Delete <b>{sessionDate(row.name)}</b> ({hms(row.duration)}, {row.segments.length} labelled {row.segments.length === 1 ? 'range' : 'ranges'})? The file and its labels are removed from this laptop. This can’t be undone.</span>
+              <button type="button" className="btn btn-danger btn-sm" onClick={() => { send({ type: 'recording_delete', session: row.name }); setConfirmDelete(false); setSelected(null); }}>Delete</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(false)}>Keep it</button>
+            </div>
+          )}
           <LabelTimeline row={row} selectedId={editing} onSelect={(id) => startEdit(row.segments.find((s) => s.id === id))} />
           <ul className="map-legend"><li><span className="seg-dot dot-empty" /> Empty</li><li><span className="seg-dot dot-present" /> Person present</li><li><span className="lg-unlabelled" /> Not labelled</li></ul>
 
