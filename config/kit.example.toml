@@ -29,5 +29,5 @@ presence_model = "custom_presence_model.pth"
 fallback_model = "model.pth"
 
 [recording]
-enabled = false                   # or pass --record
+enabled = true                    # record every live run; python -m trifi run --no-record skips one
 dir = "../sessions"

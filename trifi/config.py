@@ -61,7 +61,7 @@ class Config:
     fallback_model: str = "model.pth"                   # 6-class
 
     # [recording]
-    record: bool = False
+    record: bool = True                 # live runs record raw packets (run --no-record skips)
     session_dir: Path = REPO_ROOT / "sessions"
 
     # [setup]  firmware images the dashboard's Setup view flashes

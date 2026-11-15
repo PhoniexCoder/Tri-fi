@@ -20,6 +20,7 @@ from typing import Any, Optional
 import numpy as np
 
 from .api import Api
+from .collect import DataCollection
 from .config import OP_MODES, Config
 from .events import Recorder, replay
 from .inference import InferenceWorker
@@ -65,6 +66,8 @@ class LiveApp:
         self.api = Api(cfg, hello=self.hello, on_set_mode=self.set_mode)
         self.setup = BoardSetup(cfg, broadcast=self.api.broadcast)
         self.api.setup = self.setup
+        self.data = DataCollection(cfg, recorder, broadcast=self.api.broadcast, clock=clock)
+        self.api.data = self.data
         self.packets = 0
         self._inflight: set[asyncio.Task] = set()
         self._last_detected = False
@@ -100,7 +103,8 @@ class LiveApp:
     # ── outputs ───────────────────────────────────────────────────────────────
 
     def hello(self) -> dict[str, Any]:
-        return {**hello_message(self.cfg, self.pipeline, live=True), "setup": self.setup.state()}
+        return {**hello_message(self.cfg, self.pipeline, live=True), "setup": self.setup.state(),
+                "data": self.data.state()}
 
     def tick(self) -> dict[str, Any]:
         t = self.clock()
@@ -139,6 +143,7 @@ class LiveApp:
         period = 1.0 / self.cfg.broadcast_hz
         next_link_log = loop.time() + LINK_LOG_INTERVAL_S
         setup_task = asyncio.create_task(self.setup.run(stop))
+        data_task = asyncio.create_task(self.data.run(stop))
         try:
             while not stop.is_set():
                 try:
@@ -151,6 +156,8 @@ class LiveApp:
                     next_link_log += LINK_LOG_INTERVAL_S
         finally:
             setup_task.cancel()
+            data_task.cancel()
+            self.data.close()
             transport.close()
             server.close()
             await server.wait_closed()

@@ -15,6 +15,8 @@ Server -> client messages carry "schema": SCHEMA_VERSION:
 Client -> server:
   {"type": "set_op_mode", "mode": 0|1|2}
   {"type": "setup_probe" | "setup_flash", ...}   laptop-local clients only
+  {"type": "label_start" | "label_stop" | "label_add" | "label_update" |
+           "label_delete" | "data_refresh", ...}   recordings and labels (see collect.py)
 """
 
 from __future__ import annotations
@@ -36,6 +38,8 @@ from .pipeline import SCHEMA_VERSION
 log = logging.getLogger(__name__)
 
 MAX_MESSAGE_BYTES = 4096
+DATA_MESSAGES = {"label_start", "label_stop", "label_add", "label_update", "label_delete",
+                 "data_refresh"}
 LOCAL_HOSTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 
@@ -61,6 +65,7 @@ class Api:
         self._hello = hello
         self._on_set_mode = on_set_mode
         self.setup: Any = None          # BoardSetup when running live
+        self.data: Any = None           # DataCollection when running live
         self.clients: set[ServerConnection] = set()
         if not cfg.api_token:
             log.warning("api_token is empty: dashboard WebSocket has no authentication")
@@ -111,6 +116,11 @@ class Api:
             log.info("Operating mode set to %d (%s)", mode, OP_MODES[mode])
             return None
         kind = data.get("type")
+        if kind in DATA_MESSAGES:
+            if self.data is None:
+                return "recordings and labels are only available while running live (python -m trifi run)"
+            answer: Optional[str] = self.data.handle(data)
+            return answer
         if isinstance(kind, str) and kind.startswith("setup_"):
             if self.setup is None:
                 return "board setup is only available while running live (python -m trifi run)"
