@@ -4,7 +4,7 @@ list of recorded sessions.
 
 Dashboard -> backend:
   {"type": "record_start"} / {"type": "record_stop"}   start or stop saving raw packets
-  {"type": "label_start", "label": "empty"|"present", "people": n, "activity": "", "setup": ""}
+  {"type": "label_start", "label": "empty"|"present", "people": n, "activity": "", "place": "", "setup": ""}
       starts a labelled range now in the live recording (closing any open one)
   {"type": "label_stop"}                       closes the open range
   {"type": "label_add", "session": name, "start": t, "end": t, ...fields}
@@ -99,6 +99,8 @@ class DataCollection:
             "low_disk": free is not None and free < LOW_DISK_BYTES,
             "labels": list(labels.LABELS),
             "activities": [a for a in labels.ACTIVITIES if a],
+            "places": [p for p in labels.PLACES if p],
+            "classes6": {str(k): v[1] for k, v in labels.DATASET_CLASSES.items()},
         }
 
     def push(self) -> None:
@@ -248,7 +250,8 @@ class DataCollection:
                 lf.segments.remove(seg)
             else:
                 merged = {"label": seg.label, "people": seg.people, "activity": seg.activity,
-                          "setup": seg.setup, **{k: data[k] for k in ("label", "people", "activity", "setup")
+                          "setup": seg.setup, "place": seg.place,
+                          **{k: data[k] for k in ("label", "people", "activity", "setup", "place")
                                                  if k in data}}
                 fields, error = labels.validate_fields(merged)
                 if error or fields is None:
@@ -263,7 +266,7 @@ class DataCollection:
                         return rerr
                     seg.start, seg.end = rng
                 seg.label, seg.people = fields["label"], fields["people"]
-                seg.activity, seg.setup = fields["activity"], fields["setup"]
+                seg.activity, seg.setup, seg.place = fields["activity"], fields["setup"], fields["place"]
             lf.save()
         self._rows = [({**labels.summarize(path, meta), "live": r.get("live", False)}
                        if r["name"] == path.name else r) for r in self._rows]

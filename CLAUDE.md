@@ -45,7 +45,7 @@ Models (`models/*.pth`) and `custom_dataset/` are **not in git**; they come from
 pip install -r requirements.txt          # requirements-dev.txt for tests/lint (no torch needed)
 python -m trifi check                    # preflight
 python -m trifi run [--record]           # live backend; Record/Stop in the dashboard (--record: from launch)
-python -m trifi export --out DIR         # labelled ranges -> training .npy + manifest.csv
+python -m trifi export --out DIR [--classes 6]  # labelled ranges -> training .npy + manifest.csv
 python -m trifi replay sessions/<f>.jsonl.gz
 cd ui/react-rescue && npm install && npm run dev   # http://localhost:3000[?token=...]
 ruff check trifi tests && mypy && python -m pytest  # gcc/clang on PATH for firmware tests

@@ -4,7 +4,7 @@ Command line:
     python -m trifi run    [--config FILE] [--record]      live backend (default); record from the
                                                            dashboard Data view, or from launch with --record
     python -m trifi replay SESSION [--config FILE] [--speed X]
-    python -m trifi export --out DIR [--config FILE] [SESSION ...]
+    python -m trifi export --out DIR [--classes 2|6] [--config FILE] [SESSION ...]
                                                            labelled ranges -> per-node .npy for training
     python -m trifi check  [--config FILE]                 preflight: config + model
 """
@@ -105,6 +105,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     rep.add_argument("--speed", type=float, default=1.0, help="playback speed (default 1.0)")
     exp = sub.add_parser("export", help="export labelled ranges as per-node .npy files for training")
     exp.add_argument("--out", type=Path, required=True, help="output folder (created if missing)")
+    exp.add_argument("--classes", type=int, choices=(2, 6), default=2,
+                     help="2 = empty/present (default); 6 = the custom_dataset/ classes")
     exp.add_argument("sessions", nargs="*", type=Path,
                      help="session files (default: all in the session folder)")
     sub.add_parser("check", help="validate config and model, then exit")
@@ -127,9 +129,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         if missing:
             print(f"Session not found: {missing[0]}", file=sys.stderr)
             return 2
-        summary = export_dataset(sessions, args.out)
+        summary = export_dataset(sessions, args.out, classes=args.classes)
         print(f"Exported {summary['files']} files ({summary['frames']} frames) from "
               f"{summary['segments']} labelled ranges in {summary['sessions']} sessions to {args.out}")
+        for why, n in summary["skipped"].items():
+            print(f"  skipped {n} range{'s' if n != 1 else ''}: {why}")
         return 0
     try:
         if args.command == "replay":

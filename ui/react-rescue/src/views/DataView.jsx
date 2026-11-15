@@ -3,9 +3,12 @@ import { StatTile } from '../components/charts/Figures';
 import Icon, { Status } from '../components/Icon';
 import LabelFields, { EMPTY_FIELDS } from '../components/LabelFields';
 import LabelTimeline from '../components/LabelTimeline';
-import { ACTIVITY_TEXT, bytes, hms, LABEL_COLOR, LABEL_TEXT, parseHms, sessionDate } from '../lib/recordings';
+import { ACTIVITY_TEXT, bytes, hms, LABEL_COLOR, LABEL_TEXT, parseHms, PLACE_TEXT, sessionDate } from '../lib/recordings';
 
-const EXPORT_CMD = 'python -m trifi export --out training_data';
+const EXPORT_CMDS = [
+  { cmd: 'python -m trifi export --out training_data', note: 'Two classes: 0 empty, 1 person present' },
+  { cmd: 'python -m trifi export --classes 6 --out training_data_6', note: 'The six April classes, to combine with custom_dataset/' },
+];
 
 /** Thin two-part bar: share of the recording labelled empty vs person present. */
 function Coverage({ row }) {
@@ -30,7 +33,7 @@ export default function DataView({ ctx }) {
   const [selected, setSelected] = useState(null);
   const [editing, setEditing] = useState(null);        // segment id, 'new', or null
   const [form, setForm] = useState({ ...EMPTY_FIELDS, start: '', end: '' });
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const sessions = data?.sessions ?? [];
   const rec = data?.recording;
@@ -53,14 +56,14 @@ export default function DataView({ ctx }) {
     const first = row.first_t;
     setEditing(seg ? seg.id : 'new');
     setForm(seg
-      ? { label: seg.label, people: seg.people, activity: seg.activity, setup: seg.setup, start: hms(seg.start - first), end: seg.end == null ? '' : hms(seg.end - first) }
+      ? { label: seg.label, people: seg.people, activity: seg.activity, place: seg.place ?? '', setup: seg.setup, start: hms(seg.start - first), end: seg.end == null ? '' : hms(seg.end - first) }
       : { ...EMPTY_FIELDS, start: '0:00', end: hms(row.duration) });
   };
   const saveEdit = () => {
     const s = parseHms(form.start);
     const e = parseHms(form.end);
     if (s == null || e == null) { socket.clearDataError(); return; }
-    const fields = { label: form.label, people: Number(form.people) || 0, activity: form.activity, setup: form.setup,
+    const fields = { label: form.label, people: Number(form.people) || 0, activity: form.activity, place: form.place, setup: form.setup,
       start: row.first_t + s, end: row.first_t + e };
     send(editing === 'new' ? { type: 'label_add', session: row.name, ...fields } : { type: 'label_update', session: row.name, id: editing, ...fields });
     setEditing(null);
@@ -106,7 +109,7 @@ export default function DataView({ ctx }) {
             <div className="labelling-now" aria-live="polite">
               <span className={`seg-dot dot-${openSeg.label}`} aria-hidden="true" />
               <div className="grow">
-                <strong>Labelling: {LABEL_TEXT[openSeg.label]}{openSeg.label === 'present' ? `, ${openSeg.people} ${openSeg.people === 1 ? 'person' : 'people'}` : ''}{openSeg.activity ? `, ${ACTIVITY_TEXT[openSeg.activity].toLowerCase()}` : ''}</strong>
+                <strong>Labelling: {LABEL_TEXT[openSeg.label]}{openSeg.label === 'present' ? `, ${openSeg.people} ${openSeg.people === 1 ? 'person' : 'people'}` : ''}{openSeg.activity ? `, ${ACTIVITY_TEXT[openSeg.activity].toLowerCase()}` : ''}{openSeg.place ? `, ${PLACE_TEXT[openSeg.place].toLowerCase()}` : ''}</strong>
                 <span className="muted"> for {hms((rec.last_t ?? openSeg.start) - openSeg.start)}{openSeg.setup ? ` · ${openSeg.setup}` : ''}</span>
               </div>
               <button type="button" className="btn btn-ghost" onClick={() => send({ type: 'label_stop' })}><Icon name="stop" size={14} /> Stop</button>
@@ -114,7 +117,7 @@ export default function DataView({ ctx }) {
           )}
           <fieldset className="live-label" disabled={!rec?.active}>
             <legend className="sr-only">Label for the live recording</legend>
-          <LabelFields value={live} onChange={setLive} activities={data.activities} idPrefix="live" />
+          <LabelFields value={live} onChange={setLive} activities={data.activities} places={data.places} classes6={data.classes6} idPrefix="live" />
           </fieldset>
           <div className="board-actions">
             <button type="button" className="btn btn-primary" disabled={!rec?.active}
@@ -197,7 +200,7 @@ export default function DataView({ ctx }) {
                 <label className="field"><span className="field-label">From (m:ss)</span><input className="input input-narrow" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></label>
                 <label className="field"><span className="field-label">To (m:ss)</span><input className="input input-narrow" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
               </div>
-              <LabelFields value={form} onChange={(v) => setForm({ ...form, ...v })} activities={data.activities} idPrefix="edit" />
+              <LabelFields value={form} onChange={(v) => setForm({ ...form, ...v })} activities={data.activities} places={data.places} classes6={data.classes6} idPrefix="edit" />
               {badTimes && <p className="field-warn">Times are minutes:seconds from the start of the recording, and “To” must be after “From”.</p>}
               <div className="board-actions">
                 <button type="button" className="btn btn-primary" onClick={saveEdit} disabled={badTimes}>Save</button>
@@ -208,7 +211,7 @@ export default function DataView({ ctx }) {
 
           <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th scope="col" className="num">From</th><th scope="col" className="num">To</th><th scope="col">Label</th><th scope="col" className="num">People</th><th scope="col">Activity</th><th scope="col">Setup</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+              <thead><tr><th scope="col" className="num">From</th><th scope="col" className="num">To</th><th scope="col">Label</th><th scope="col" className="num">People</th><th scope="col">Activity</th><th scope="col">Where</th><th scope="col" className="num" title="Class in a six-class export">Class</th><th scope="col">Setup</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {row.segments.map((s) => (
                   <tr key={s.id} className={editing === s.id ? 'selected' : ''}>
@@ -217,6 +220,8 @@ export default function DataView({ ctx }) {
                     <td><span className={`seg-dot dot-${s.label}`} aria-hidden="true" /> {LABEL_TEXT[s.label]}</td>
                     <td className="num">{s.people}</td>
                     <td>{ACTIVITY_TEXT[s.activity]}</td>
+                    <td>{PLACE_TEXT[s.place ?? '']}</td>
+                    <td className="num" title={s.class6 == null ? 'Skipped in a six-class export' : data.classes6?.[s.class6]}>{s.class6 ?? '—'}</td>
                     <td className="wrap-cell">{s.setup || '—'}</td>
                     <td className="actions">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(s)} disabled={s.end == null}>Edit</button>
@@ -224,7 +229,7 @@ export default function DataView({ ctx }) {
                     </td>
                   </tr>
                 ))}
-                {!row.segments.length && <tr><td colSpan={7} className="muted">No labels yet. Add a range above, or label live while recording.</td></tr>}
+                {!row.segments.length && <tr><td colSpan={9} className="muted">No labels yet. Add a range above, or label live while recording.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -238,11 +243,15 @@ export default function DataView({ ctx }) {
             <p className="card-sub">Cuts every labelled range into one file per node (64 subcarriers × frames), named like custom_dataset/ so the training script reads them, plus manifest.csv with people, activity and setup notes.</p>
           </div>
         </header>
-        <div className="cmd">
-          <code>{EXPORT_CMD}</code>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(EXPORT_CMD); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } }}>
-            <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy'}
-          </button>
+        <div className="col-cmds">
+          {EXPORT_CMDS.map(({ cmd, note }) => (
+            <div className="cmd" key={cmd}>
+              <div className="grow"><code>{cmd}</code><span className="cmd-note">{note}</span></div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(cmd); setCopied(cmd); setTimeout(() => setCopied(null), 1500); } catch { /* clipboard blocked */ } }}>
+                <Icon name={copied === cmd ? 'check' : 'copy'} size={14} /> {copied === cmd ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          ))}
         </div>
         <p className="note"><Icon name="info" size={14} /><span>Train and test on different recordings: keep some sessions out of training so accuracy numbers mean something.</span></p>
       </section>

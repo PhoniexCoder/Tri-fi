@@ -260,3 +260,30 @@
 .inline-alert.confirm > span {
   flex: 1;
 }
+
+.class-preview {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--ink-2);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.class-preview.is-missing {
+  background: var(--warn-wash);
+}
+.col-cmds {
+  display: grid;
+  gap: 8px;
+}
+.cmd .grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cmd-note {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
