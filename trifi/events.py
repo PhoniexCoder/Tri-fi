@@ -28,6 +28,7 @@ from typing import IO, Any, Optional
 import numpy as np
 
 from .config import Config, describe
+from .labels import meta_path, read_json, write_json
 from .pipeline import Pipeline
 
 SESSION_VERSION = 1
@@ -50,9 +51,13 @@ class Recorder:
         self._f = _open(path, "w")
         self._pending = 0
         self._flush_every = flush_every
+        self.started = datetime.now(UTC).isoformat(timespec="seconds")
+        self.packets = 0
+        self.first_t: Optional[float] = None
+        self.last_t: Optional[float] = None
+        self._sources: set[str] = set()
         self._write({"kind": "session", "version": SESSION_VERSION,
-                     "started": datetime.now(UTC).isoformat(timespec="seconds"),
-                     "config": describe(cfg)})
+                     "started": self.started, "config": describe(cfg)})
 
     @staticmethod
     def default_path(cfg: Config) -> Path:
@@ -69,6 +74,11 @@ class Recorder:
     def packet(self, t: float, src: str, data: bytes) -> None:
         self._write({"kind": "udp", "t": round(t, 6), "src": src,
                      "data": base64.b64encode(data).decode("ascii")})
+        self.packets += 1
+        if self.first_t is None:
+            self.first_t = t
+        self.last_t = t
+        self._sources.add(src.split(":")[0])
 
     def mode(self, t: float, mode: int) -> None:
         self._write({"kind": "mode", "t": round(t, 6), "mode": mode})
@@ -77,8 +87,20 @@ class Recorder:
         self._write({"kind": "detection", "t": round(t, 6), "detected": detected,
                      "confidence": confidence, "status": status})
 
+    def meta(self) -> dict[str, Any]:
+        return {"session": self.path.name, "started": self.started, "packets": self.packets,
+                "first_t": self.first_t, "last_t": self.last_t, "sources": len(self._sources),
+                "complete": self._f.closed}
+
+    def write_meta(self) -> None:
+        """Flush and refresh the summary sidecar (called periodically and on close)."""
+        if not self._f.closed:
+            self._f.flush()
+        write_json(meta_path(self.path), self.meta())
+
     def close(self) -> None:
         self._f.close()
+        self.write_meta()
 
 
 @dataclass
@@ -109,6 +131,31 @@ def read_session(path: Path) -> Iterator[SessionRecord]:
                                     base64.b64decode(rec["data"]))
             elif kind == "mode":
                 yield SessionRecord("mode", float(rec["t"]), mode=int(rec["mode"]))
+
+
+def session_meta(path: Path) -> dict[str, Any]:
+    """Summary of a session: from its sidecar, else by scanning the file once (then cached)."""
+    meta = read_json(meta_path(path))
+    if isinstance(meta, dict) and meta.get("complete"):
+        return meta
+    packets, first, last, sources = 0, None, None, set()
+    try:
+        for rec in read_session(path):
+            if rec.kind != "udp":
+                continue
+            packets += 1
+            first = rec.t if first is None else first
+            last = rec.t
+            sources.add(rec.src.split(":")[0])
+    except (OSError, ValueError, EOFError):
+        pass                # a session cut off by a crash: keep what was readable
+    meta = {"session": path.name, "packets": packets, "first_t": first, "last_t": last,
+            "sources": len(sources), "complete": True}
+    try:
+        write_json(meta_path(path), meta)
+    except OSError:
+        pass
+    return meta
 
 
 def replay(path: Path, cfg: Config, predict: Optional[Callable[[np.ndarray], np.ndarray]],

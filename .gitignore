@@ -29,6 +29,7 @@ nvs_provision.bin
 *.npz
 custom_dataset/
 sessions/
+training_data/
 
 # Third-party executables
 *.exe

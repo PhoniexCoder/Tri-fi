@@ -29,5 +29,5 @@ presence_model = "custom_presence_model.pth"
 fallback_model = "model.pth"
 
 [recording]
-enabled = false                   # or pass --record
+enabled = false                   # true = record from launch; else press Record in the Data view
 dir = "../sessions"

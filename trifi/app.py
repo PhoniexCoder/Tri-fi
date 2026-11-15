@@ -20,6 +20,7 @@ from typing import Any, Optional
 import numpy as np
 
 from .api import Api
+from .collect import DataCollection
 from .config import OP_MODES, Config
 from .events import Recorder, replay
 from .inference import InferenceWorker
@@ -59,15 +60,21 @@ class LiveApp:
                  recorder: Optional[Recorder] = None, clock: Callable[[], float] = time.time):
         self.cfg = cfg
         self.worker = worker
-        self.recorder = recorder
         self.clock = clock
         self.pipeline = Pipeline(cfg, start_t=clock(), model=worker.info if worker else None)
         self.api = Api(cfg, hello=self.hello, on_set_mode=self.set_mode)
         self.setup = BoardSetup(cfg, broadcast=self.api.broadcast)
         self.api.setup = self.setup
+        # The data service owns the recorder: the dashboard starts and stops it.
+        self.data = DataCollection(cfg, recorder, broadcast=self.api.broadcast, clock=clock)
+        self.api.data = self.data
         self.packets = 0
         self._inflight: set[asyncio.Task] = set()
         self._last_detected = False
+
+    @property
+    def recorder(self) -> Optional[Recorder]:
+        return self.data.recorder
 
     # ── inputs ────────────────────────────────────────────────────────────────
 
@@ -100,7 +107,8 @@ class LiveApp:
     # ── outputs ───────────────────────────────────────────────────────────────
 
     def hello(self) -> dict[str, Any]:
-        return {**hello_message(self.cfg, self.pipeline, live=True), "setup": self.setup.state()}
+        return {**hello_message(self.cfg, self.pipeline, live=True), "setup": self.setup.state(),
+                "data": self.data.state()}
 
     def tick(self) -> dict[str, Any]:
         t = self.clock()
@@ -139,6 +147,7 @@ class LiveApp:
         period = 1.0 / self.cfg.broadcast_hz
         next_link_log = loop.time() + LINK_LOG_INTERVAL_S
         setup_task = asyncio.create_task(self.setup.run(stop))
+        data_task = asyncio.create_task(self.data.run(stop))
         try:
             while not stop.is_set():
                 try:
@@ -151,6 +160,7 @@ class LiveApp:
                     next_link_log += LINK_LOG_INTERVAL_S
         finally:
             setup_task.cancel()
+            data_task.cancel()
             transport.close()
             server.close()
             await server.wait_closed()
@@ -158,9 +168,7 @@ class LiveApp:
                 task.cancel()
             if self.worker:
                 self.worker.close()
-            if self.recorder:
-                self.recorder.close()
-                log.info("Session saved to %s", self.recorder.path)
+            self.data.close()
 
 
 def hello_message(cfg: Config, pipeline: Optional[Pipeline], live: bool) -> dict[str, Any]:

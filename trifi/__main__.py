@@ -1,8 +1,11 @@
 """
 Command line:
 
-    python -m trifi run    [--config FILE] [--record]      live backend (default)
+    python -m trifi run    [--config FILE] [--record]      live backend (default); record from the
+                                                           dashboard Data view, or from launch with --record
     python -m trifi replay SESSION [--config FILE] [--speed X]
+    python -m trifi export --out DIR [--config FILE] [SESSION ...]
+                                                           labelled ranges -> per-node .npy for training
     python -m trifi check  [--config FILE]                 preflight: config + model
 """
 
@@ -62,6 +65,7 @@ def cmd_check(cfg) -> int:
 
 
 async def cmd_run(cfg, record: bool) -> None:
+    """Live backend. Records from launch with --record or [recording] enabled = true."""
     from .app import LiveApp
     from .events import Recorder
     from .inference import InferenceWorker, find_model, probe_model
@@ -94,10 +98,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command")
     run = sub.add_parser("run", help="live backend (default)")
-    run.add_argument("--record", action="store_true", help="record a session file")
+    run.add_argument("--record", action="store_true",
+                     help="start recording at launch (otherwise use Record in the dashboard)")
     rep = sub.add_parser("replay", help="replay a recorded session to the dashboard")
     rep.add_argument("session", type=Path)
     rep.add_argument("--speed", type=float, default=1.0, help="playback speed (default 1.0)")
+    exp = sub.add_parser("export", help="export labelled ranges as per-node .npy files for training")
+    exp.add_argument("--out", type=Path, required=True, help="output folder (created if missing)")
+    exp.add_argument("sessions", nargs="*", type=Path,
+                     help="session files (default: all in the session folder)")
     sub.add_parser("check", help="validate config and model, then exit")
     args = parser.parse_args(argv)
 
@@ -110,6 +119,18 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.command == "check":
         return cmd_check(cfg)
+    if args.command == "export":
+        from .dataset import export_dataset
+        from .labels import list_sessions
+        sessions = args.sessions or list_sessions(cfg.session_dir)
+        missing = [s for s in sessions if not Path(s).is_file()]
+        if missing:
+            print(f"Session not found: {missing[0]}", file=sys.stderr)
+            return 2
+        summary = export_dataset(sessions, args.out)
+        print(f"Exported {summary['files']} files ({summary['frames']} frames) from "
+              f"{summary['segments']} labelled ranges in {summary['sessions']} sessions to {args.out}")
+        return 0
     try:
         if args.command == "replay":
             if not args.session.is_file():

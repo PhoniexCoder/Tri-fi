@@ -7,6 +7,7 @@ import { linkState } from './lib/format';
 import { readiness } from './lib/readiness';
 import { useHistory } from './lib/useHistory';
 import { useTrifiSocket } from './lib/useTrifiSocket';
+import DataView from './views/DataView';
 import EventsView from './views/EventsView';
 import MapView from './views/MapView';
 import NodesView from './views/NodesView';
@@ -15,7 +16,7 @@ import SetupView from './views/SetupView';
 import SignalsView from './views/SignalsView';
 import SystemView from './views/SystemView';
 
-const PAGES = { overview: OverviewView, map: MapView, nodes: NodesView, signals: SignalsView, events: EventsView, setup: SetupView, system: SystemView };
+const PAGES = { overview: OverviewView, map: MapView, nodes: NodesView, signals: SignalsView, events: EventsView, data: DataView, setup: SetupView, system: SystemView };
 const STALE_UPDATES = 5; // missed broadcasts before the screen warns that data stopped
 
 function storedTheme() {
@@ -121,6 +122,7 @@ export default function App() {
     ...(detected && { overview: { tone: 'alert', text: 'Alert' } }),
     ...(unhealthy && { nodes: { tone: 'warn', text: String(unhealthy) } }),
     ...(portList.length && { setup: { tone: 'info', text: String(portList.length) } }),
+    ...(socket.data?.recording?.active && { data: { tone: 'alert', text: 'REC' } }),
   };
 
   const ctx = {
@@ -136,6 +138,8 @@ export default function App() {
     <div className={`app ${detected ? 'is-alert' : ''}`}>
       <a className="skip" href="#main">Skip to content</a>
       <TopBar conn={conn} hello={hello} snapshot={snapshot} onMode={socket.setMode} theme={theme}
+        rec={status === 'online' ? socket.data?.recording ?? null : null}
+        onRecord={(start) => socket.send({ type: start ? 'record_start' : 'record_stop' })}
         onTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
       <div className="shell">
         <Nav view={view} onView={go} badges={badges} />

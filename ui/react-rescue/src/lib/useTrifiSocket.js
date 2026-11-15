@@ -27,6 +27,8 @@ export function useTrifiSocket() {
   const [error, setError] = useState(null);
   const [setup, setSetup] = useState(null);
   const [setupError, setSetupError] = useState(null);
+  const [data, setData] = useState(null);
+  const [dataError, setDataError] = useState(null);
   const [receivedAt, setReceivedAt] = useState(null);
   const [stats, setStats] = useState({ reconnects: 0, messages: 0, rate: 0, connectedAt: null });
   const wsRef = useRef(null);
@@ -76,6 +78,7 @@ export function useTrifiSocket() {
         if (msg.type === 'hello') {
           setHello(msg);
           setSetup(msg.setup ?? null);
+          setData(msg.data ?? null);
           setError(null);
         } else if (msg.type === 'rescue_ai') {
           const now = Date.now();
@@ -84,8 +87,11 @@ export function useTrifiSocket() {
           setReceivedAt(now);
         } else if (msg.type === 'setup_state') {
           setSetup(msg);
+        } else if (msg.type === 'data_state') {
+          setData(msg);
         } else if (msg.type === 'error') {
           if (typeof msg.request === 'string' && msg.request.startsWith('setup_')) setSetupError({ text: msg.error, at: Date.now() });
+          else if (typeof msg.request === 'string' && (msg.request.startsWith('label_') || msg.request.startsWith('record') || msg.request === 'data_refresh')) setDataError({ text: msg.error, at: Date.now() });
           else setError(msg.error);
         }
       };
@@ -139,6 +145,9 @@ export function useTrifiSocket() {
     setup,
     setupError,
     clearSetupError: () => setSetupError(null),
+    data,
+    dataError,
+    clearDataError: () => setDataError(null),
     clearError: () => setError(null),
   };
 }

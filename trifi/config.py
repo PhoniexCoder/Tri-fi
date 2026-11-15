@@ -61,7 +61,7 @@ class Config:
     fallback_model: str = "model.pth"                   # 6-class
 
     # [recording]
-    record: bool = False
+    record: bool = False                # record from launch; else start/stop in the dashboard
     session_dir: Path = REPO_ROOT / "sessions"
 
     # [setup]  firmware images the dashboard's Setup view flashes

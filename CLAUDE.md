@@ -18,6 +18,8 @@ Status: early prototype heading toward a commercial demo; through-debris detecti
 | `trifi/inference.py` | ResNet loading (`weights_only=True`) and the worker process |
 | `trifi/app.py`, `trifi/api.py` | asyncio UDP intake, 5 Hz snapshots, WebSocket API (token, schema v1) |
 | `trifi/events.py` | Session recording (gzip JSONL of raw packets) and deterministic replay |
+| `trifi/labels.py`, `trifi/collect.py` | Recording summaries + label sidecars (`*.meta.json`, `*.labels.json`); live/after-the-fact labelling over the WebSocket |
+| `trifi/dataset.py` | `python -m trifi export`: labelled ranges -> `node<N>_label<C>_*.npy` + `manifest.csv` |
 | `trifi/config.py` | Validated TOML config; see `config/kit.example.toml` |
 | `trifi/features.py`, `trifi/legacy_rssi.py` | Breathing FFT / features; legacy RSSI detector (op modes 1–2) |
 | `ui/react-rescue/` | React + Vite dashboard (port 3000); `src/lib/useTrifiSocket.js` speaks the API |
@@ -31,7 +33,8 @@ Models (`models/*.pth`) and `custom_dataset/` are **not in git**; they come from
 ```bash
 pip install -r requirements.txt          # requirements-dev.txt for tests/lint (no torch needed)
 python -m trifi check                    # preflight
-python -m trifi run [--record]           # live backend
+python -m trifi run [--record]           # live backend; Record/Stop in the dashboard (--record: from launch)
+python -m trifi export --out DIR         # labelled ranges -> training .npy + manifest.csv
 python -m trifi replay sessions/<f>.jsonl.gz
 cd ui/react-rescue && npm install && npm run dev   # http://localhost:3000[?token=...]
 ruff check trifi tests && mypy && python -m pytest  # gcc/clang on PATH for firmware tests

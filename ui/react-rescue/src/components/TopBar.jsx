@@ -13,7 +13,10 @@ export function connection(status, hello, snapshot, ageSeconds, staleAfter) {
   return { tone: 'ok', icon: 'wifi', label: 'Live', detail: 'Receiving live data' };
 }
 
-export default function TopBar({ conn, hello, snapshot, onMode, theme, onTheme }) {
+/** Seconds -> "4:07". */
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+export default function TopBar({ conn, hello, snapshot, onMode, theme, onTheme, rec, onRecord }) {
   const modes = Object.entries(hello?.op_modes ?? {}).map(([k, v]) => ({ id: Number(k), name: v }));
   const active = snapshot?.active_op_mode;
   const [pending, setPending] = useState(null);
@@ -50,6 +53,19 @@ export default function TopBar({ conn, hello, snapshot, onMode, theme, onTheme }
       </div>
 
       <div className="topbar-right">
+        {rec && (
+          rec.active ? (
+            <button type="button" className="btn btn-stop btn-sm rec-btn" onClick={() => onRecord(false)}
+              title="Stop recording and save the file">
+              <Icon name="stop" size={13} /> Stop <span className="rec-time">{mmss(Math.max(0, (rec.last_t ?? 0) - (rec.first_t ?? rec.last_t ?? 0)))}</span>
+            </button>
+          ) : (
+            <button type="button" className="btn btn-record btn-sm rec-btn" onClick={() => onRecord(true)}
+              title="Start saving raw CSI packets for labelling and training">
+              <Icon name="rec" size={13} /> Record
+            </button>
+          )
+        )}
         <div className="segmented" role="radiogroup" aria-label="Detection mode">
           {modes.map((m) => {
             const on = m.id === active;
