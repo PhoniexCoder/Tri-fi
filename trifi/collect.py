@@ -3,6 +3,7 @@ Data collection: the live recording, labelling from the dashboard, and the
 list of recorded sessions.
 
 Dashboard -> backend:
+  {"type": "record_start"} / {"type": "record_stop"}   start or stop saving raw packets
   {"type": "label_start", "label": "empty"|"present", "people": n, "activity": "", "setup": ""}
       starts a labelled range now in the live recording (closing any open one)
   {"type": "label_stop"}                       closes the open range
@@ -120,15 +121,61 @@ class DataCollection:
                 self.push()
 
     def close(self) -> None:
-        """Close any open live range at the last packet time (on shutdown)."""
-        if self._live_labels and self.recorder:
-            self._live_labels.close_open(self.recorder.last_t or self.clock())
+        """On shutdown: close any open range and finish the recording."""
+        if self.recorder:
+            self.stop_recording()
+
+    # ── recording on demand ───────────────────────────────────────────────────
+
+    def _new_path(self) -> Path:
+        path = Recorder.default_path(self.cfg)
+        n = 1
+        while path.exists():            # two starts within one second
+            path = path.with_name(Recorder.default_path(self.cfg).name.replace(".jsonl.gz", f"-{n}.jsonl.gz"))
+            n += 1
+        return path
+
+    def start_recording(self) -> Optional[str]:
+        if self.recorder:
+            return "already recording"
+        self.recorder = Recorder(self._new_path(), self.cfg)
+        self._live_labels = labels.LabelFile(self.recorder.path)
+        log.info("Recording started: %s", self.recorder.path)
+        self._refresh_live_row()
+        self.push()
+        return None
+
+    def stop_recording(self) -> Optional[str]:
+        rec = self.recorder
+        if not rec:
+            return "not recording"
+        if self._live_labels:
+            self._live_labels.close_open(rec.last_t or self.clock())
+        rec.close()
+        self.recorder = None
+        self._live_labels = None
+        self._rows = [r for r in self._rows if r["name"] != rec.path.name]
+        if rec.packets == 0:            # nothing arrived: don't keep an empty file
+            for p in (rec.path, labels.meta_path(rec.path), labels.labels_path(rec.path)):
+                p.unlink(missing_ok=True)
+            log.info("Recording stopped with no packets; discarded %s", rec.path.name)
+        else:
+            meta = rec.meta()
+            self._meta_cache[rec.path.name] = meta
+            self._rows.insert(0, {**labels.summarize(rec.path, meta), "live": False})
+            log.info("Recording saved: %s (%d packets)", rec.path, rec.packets)
+        self.push()
+        return None
 
     # ── requests ──────────────────────────────────────────────────────────────
 
     def handle(self, data: dict[str, Any]) -> Optional[str]:
         kind = data.get("type")
         try:
+            if kind == "record_start":
+                return self.start_recording()
+            if kind == "record_stop":
+                return self.stop_recording()
             if kind == "data_refresh":
                 asyncio.ensure_future(self._rescan_and_push())
                 return None
@@ -146,7 +193,7 @@ class DataCollection:
 
     def _live(self, kind: str, data: dict[str, Any]) -> Optional[str]:
         if not self.recorder or not self._live_labels:
-            return "not recording: start the backend without --no-record to label live"
+            return "start a recording first, then label it"
         now = self.recorder.last_t or self.clock()
         fields: Optional[dict[str, Any]] = None
         if kind == "label_start":            # validate before touching the open range

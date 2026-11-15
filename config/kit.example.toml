@@ -29,5 +29,5 @@ presence_model = "custom_presence_model.pth"
 fallback_model = "model.pth"
 
 [recording]
-enabled = true                    # record every live run; python -m trifi run --no-record skips one
+enabled = false                   # true = record from launch; else press Record in the Data view
 dir = "../sessions"

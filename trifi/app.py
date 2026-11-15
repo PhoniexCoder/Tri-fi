@@ -60,17 +60,21 @@ class LiveApp:
                  recorder: Optional[Recorder] = None, clock: Callable[[], float] = time.time):
         self.cfg = cfg
         self.worker = worker
-        self.recorder = recorder
         self.clock = clock
         self.pipeline = Pipeline(cfg, start_t=clock(), model=worker.info if worker else None)
         self.api = Api(cfg, hello=self.hello, on_set_mode=self.set_mode)
         self.setup = BoardSetup(cfg, broadcast=self.api.broadcast)
         self.api.setup = self.setup
+        # The data service owns the recorder: the dashboard starts and stops it.
         self.data = DataCollection(cfg, recorder, broadcast=self.api.broadcast, clock=clock)
         self.api.data = self.data
         self.packets = 0
         self._inflight: set[asyncio.Task] = set()
         self._last_detected = False
+
+    @property
+    def recorder(self) -> Optional[Recorder]:
+        return self.data.recorder
 
     # ── inputs ────────────────────────────────────────────────────────────────
 
@@ -157,7 +161,6 @@ class LiveApp:
         finally:
             setup_task.cancel()
             data_task.cancel()
-            self.data.close()
             transport.close()
             server.close()
             await server.wait_closed()
@@ -165,9 +168,7 @@ class LiveApp:
                 task.cancel()
             if self.worker:
                 self.worker.close()
-            if self.recorder:
-                self.recorder.close()
-                log.info("Session saved to %s", self.recorder.path)
+            self.data.close()
 
 
 def hello_message(cfg: Config, pipeline: Optional[Pipeline], live: bool) -> dict[str, Any]:

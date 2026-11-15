@@ -81,10 +81,26 @@ export default function DataView({ ctx }) {
           <header className="card-head">
             <div>
               <h3 id="cap-title" className="card-title">Live recording</h3>
-              <p className="card-sub">{rec?.active ? `${rec.session} · ${hms(recSeconds)} · ${(rec.packets || 0).toLocaleString()} packets` : 'Not recording. Start the backend without --no-record to collect data.'}</p>
+              <p className="card-sub">{rec?.active ? `${rec.session} · ${hms(recSeconds)} · ${(rec.packets || 0).toLocaleString()} packets` : 'Not recording. Nothing is saved until you press Start recording.'}</p>
             </div>
             {rec?.active ? <span className="rec-chip"><Icon name="rec" size={12} /> Recording</span> : <Status tone="idle">Off</Status>}
           </header>
+          <div className="record-row">
+            {rec?.active ? (
+              <button type="button" className="btn btn-stop" onClick={() => send({ type: 'record_stop' })}>
+                <Icon name="stop" size={15} /> Stop recording
+              </button>
+            ) : (
+              <button type="button" className="btn btn-record" onClick={() => send({ type: 'record_start' })}>
+                <Icon name="rec" size={15} /> Start recording
+              </button>
+            )}
+            <span className="field-hint">
+              {rec?.active
+                ? 'Stopping saves the file and closes any open label. Recordings with no data are discarded.'
+                : 'Start once the nodes are placed and the area is set up, so noisy set-up time stays out of your data.'}
+            </span>
+          </div>
           {openSeg && (
             <div className="labelling-now" aria-live="polite">
               <span className={`seg-dot dot-${openSeg.label}`} aria-hidden="true" />
@@ -95,13 +111,16 @@ export default function DataView({ ctx }) {
               <button type="button" className="btn btn-ghost" onClick={() => send({ type: 'label_stop' })}><Icon name="stop" size={14} /> Stop</button>
             </div>
           )}
+          <fieldset className="live-label" disabled={!rec?.active}>
+            <legend className="sr-only">Label for the live recording</legend>
           <LabelFields value={live} onChange={setLive} activities={data.activities} idPrefix="live" />
+          </fieldset>
           <div className="board-actions">
             <button type="button" className="btn btn-primary" disabled={!rec?.active}
               onClick={() => send({ type: 'label_start', ...live, people: Number(live.people) || 0 })}>
               <Icon name="rec" size={14} /> {openSeg ? 'Switch to this label' : 'Start labelling'}
             </button>
-            <span className="field-hint">Start “Empty” before anyone enters; switch to “Person present” once they are in position.</span>
+            <span className="field-hint">{rec?.active ? 'Start “Empty” before anyone enters; switch to “Person present” once they are in position.' : 'Start a recording to label it.'}</span>
           </div>
         </section>
 

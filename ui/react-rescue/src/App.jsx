@@ -138,6 +138,8 @@ export default function App() {
     <div className={`app ${detected ? 'is-alert' : ''}`}>
       <a className="skip" href="#main">Skip to content</a>
       <TopBar conn={conn} hello={hello} snapshot={snapshot} onMode={socket.setMode} theme={theme}
+        rec={status === 'online' ? socket.data?.recording ?? null : null}
+        onRecord={(start) => socket.send({ type: start ? 'record_start' : 'record_stop' })}
         onTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
       <div className="shell">
         <Nav view={view} onView={go} badges={badges} />

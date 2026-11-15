@@ -1,7 +1,8 @@
 """
 Command line:
 
-    python -m trifi run    [--config FILE] [--no-record]   live backend (default); records every run
+    python -m trifi run    [--config FILE] [--record]      live backend (default); record from the
+                                                           dashboard Data view, or from launch with --record
     python -m trifi replay SESSION [--config FILE] [--speed X]
     python -m trifi export --out DIR [--config FILE] [SESSION ...]
                                                            labelled ranges -> per-node .npy for training
@@ -64,7 +65,7 @@ def cmd_check(cfg) -> int:
 
 
 async def cmd_run(cfg, record: bool) -> None:
-    """Live backend. Records unless disabled by --no-record or [recording] enabled = false."""
+    """Live backend. Records from launch with --record or [recording] enabled = true."""
     from .app import LiveApp
     from .events import Recorder
     from .inference import InferenceWorker, find_model, probe_model
@@ -75,7 +76,7 @@ async def cmd_run(cfg, record: bool) -> None:
         log.warning("No model found in %s; running legacy RSSI detection only", cfg.model_dir)
     else:
         worker = InferenceWorker(probe_model(path))
-    recorder = Recorder(Recorder.default_path(cfg), cfg) if record and cfg.record else None
+    recorder = Recorder(Recorder.default_path(cfg), cfg) if record or cfg.record else None
     if recorder:
         log.info("Recording session to %s", recorder.path)
     await LiveApp(cfg, worker=worker, recorder=recorder).run()
@@ -97,8 +98,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command")
     run = sub.add_parser("run", help="live backend (default)")
-    run.add_argument("--record", action="store_true", help=argparse.SUPPRESS)   # now the default
-    run.add_argument("--no-record", action="store_true", help="don't record this run")
+    run.add_argument("--record", action="store_true",
+                     help="start recording at launch (otherwise use Record in the dashboard)")
     rep = sub.add_parser("replay", help="replay a recorded session to the dashboard")
     rep.add_argument("session", type=Path)
     rep.add_argument("--speed", type=float, default=1.0, help="playback speed (default 1.0)")
@@ -140,7 +141,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return 2
             asyncio.run(cmd_replay(cfg, args.session, args.speed))
         else:
-            asyncio.run(cmd_run(cfg, not getattr(args, "no_record", False)))
+            asyncio.run(cmd_run(cfg, getattr(args, "record", False)))
     except KeyboardInterrupt:
         pass
     except OSError as e:

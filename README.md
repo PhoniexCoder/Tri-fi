@@ -72,7 +72,7 @@ Without a model the backend still runs, using the legacy RSSI detector only.
 ```bash
 pip install -r requirements.txt
 python -m trifi check                                # config + model preflight
-python -m trifi run                                  # live; records every run to sessions/ (--no-record to skip)
+python -m trifi run                                  # live; press Record in the dashboard to save data (--record: from launch)
 python -m trifi export --out training_data           # labelled ranges -> per-node .npy for training
 python -m trifi replay sessions/<file>.jsonl.gz      # replay a session to the dashboard
 ```

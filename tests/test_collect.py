@@ -117,7 +117,53 @@ def test_live_labelling(tmp_path):
 
 def test_live_labelling_needs_a_recording(tmp_path):
     dc = DataCollection(replace(Config(), session_dir=tmp_path), None, broadcast=lambda m: None)
-    assert "not recording" in dc.handle({"type": "label_start", "label": "empty"})
+    assert "start a recording first" in dc.handle({"type": "label_start", "label": "empty"})
+
+
+def test_record_button_starts_and_stops_a_recording(tmp_path):
+    sent = []
+    dc = DataCollection(replace(Config(), session_dir=tmp_path), None, broadcast=sent.append)
+    assert dc.handle({"type": "record_stop"}) == "not recording"
+    assert dc.handle({"type": "record_start"}) is None
+    assert dc.handle({"type": "record_start"}) == "already recording"
+    path = dc.recorder.path
+    assert sent[-1]["recording"]["active"] and sent[-1]["recording"]["session"] == path.name
+    dc.recorder.packet(500.0, "10.0.0.1:5", b"x")
+    assert dc.handle({"type": "label_start", "label": "empty"}) is None
+    dc.recorder.packet(530.0, "10.0.0.1:5", b"x")
+    assert dc.handle({"type": "record_stop"}) is None             # also closes the open label
+    assert dc.recorder is None and path.exists()
+    assert json.loads(labels.meta_path(path).read_text())["complete"]
+    assert labels.LabelFile(path).segments[0].end == 530.0
+    state = dc.state()
+    assert not state["recording"]["active"] and state["sessions"][0]["name"] == path.name
+
+
+def test_a_recording_with_no_packets_is_discarded(tmp_path):
+    dc = DataCollection(replace(Config(), session_dir=tmp_path), None, broadcast=lambda m: None)
+    dc.handle({"type": "record_start"})
+    path = dc.recorder.path
+    dc.handle({"type": "record_stop"})
+    assert not path.exists() and not labels.meta_path(path).exists()
+    assert dc.state()["sessions"] == []
+
+
+def test_live_app_records_only_while_the_button_is_on(tmp_path):
+    from synthetic import raw_packet
+
+    from trifi.app import LiveApp
+
+    app = LiveApp(replace(Config(), session_dir=tmp_path))
+    app.setup._scan = lambda: []
+    pkt = raw_packet(1, 1, np.full(64, 20.0), -50)
+    app.handle_packet(pkt, ("10.0.0.1", 5))
+    assert app.recorder is None
+    app.data.handle({"type": "record_start"})
+    app.handle_packet(pkt, ("10.0.0.1", 5))
+    app.handle_packet(pkt, ("10.0.0.1", 5))
+    assert app.recorder.packets == 2
+    app.data.close()                                               # shutdown finishes the file
+    assert app.recorder is None and len(labels.list_sessions(tmp_path)) == 1
 
 
 def test_label_after_recording(recorded):
