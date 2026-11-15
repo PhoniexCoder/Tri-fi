@@ -28,6 +28,17 @@ Status: early prototype heading toward a commercial demo; through-debris detecti
 
 Models (`models/*.pth`) and `custom_dataset/` are **not in git**; they come from GitHub Releases.
 
+`custom_dataset/` classes (`node<N>_label<C>_*.npy`), also the 6-class model's outputs; the table is `DATASET_CLASSES` in `trifi/labels.py`:
+
+| C | Meaning | People |
+|---|---|---|
+| 0 | Empty | 0 |
+| 1 | One person sitting | 1 |
+| 2 | One person moving in the centre | 1 |
+| 3 | One person moving near the nodes (perimeter) | 1 |
+| 4 | Two people sitting or standing | 2 |
+| 5 | Two people walking inside | 2 |
+
 ## Run
 
 ```bash

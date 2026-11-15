@@ -63,14 +63,32 @@ def test_gate_blocks_until_calibrated_unless_confident():
     assert pipe.nodes[1].ml_prob == pytest.approx(0.49, abs=1e-6)
 
 
-def test_six_class_survivor_mapping():
+@pytest.mark.parametrize("cls,people", [
+    (1, 1),   # one person sitting
+    (2, 1),   # one person moving in the centre (was wrongly counted as two)
+    (3, 1),   # one person moving near the nodes
+    (4, 2),   # two people sitting or standing
+    (5, 2),   # two people walking inside
+])
+def test_six_class_people_mapping(cls, people):
     pipe = make(model_classes=6)
+    req = InferenceRequest(1, np.zeros((64, 100)), gated=False, t=T)
+    probs = np.zeros(6)
+    probs[cls] = 1.0
+    for _ in range(3):
+        pipe.nodes[1].pending = True
+        pipe.on_inference(req, probs)
+    assert pipe.nodes[1].survivors() == people
+    assert pipe.nodes[1].detected
+
+
+def test_presence_model_never_claims_more_than_one_person():
+    pipe = make(model_classes=2)
     req = InferenceRequest(1, np.zeros((64, 100)), gated=False, t=T)
     for _ in range(3):
         pipe.nodes[1].pending = True
-        pipe.on_inference(req, np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0]))   # class 2 = two people
-    assert pipe.nodes[1].survivors() == 2
-    assert pipe.nodes[1].detected
+        pipe.on_inference(req, np.array([0.0, 1.0]))
+    assert pipe.nodes[1].survivors() == 1
 
 
 def test_unknown_nodes_and_garbage_ignored():

@@ -24,6 +24,7 @@ import numpy as np
 from .config import OP_MODES, Config
 from .features import get_breathing_info
 from .inference import ModelInfo
+from .labels import people_for_class
 from .legacy_rssi import TriangularPresenceDetector
 from .protocol import CSIFrame, CSIFrameParser, VitalsPacket
 
@@ -147,7 +148,7 @@ class Pipeline:
             probs[0] = 1.0
 
         argmax = int(np.argmax(probs))
-        node.survivors_hist.append(0 if argmax == 0 else 2 if argmax == 2 else 1)
+        node.survivors_hist.append(people_for_class(argmax, len(probs)))
         node.prob_hist.append(float(1.0 - probs[0]))
         node.ml_prob = float(np.mean(node.prob_hist))
         node.detected = node.ml_prob > self.cfg.node_detect_threshold
