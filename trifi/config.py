@@ -64,6 +64,9 @@ class Config:
     record: bool = False
     session_dir: Path = REPO_ROOT / "sessions"
 
+    # [setup]  firmware images the dashboard's Setup view flashes
+    firmware_dir: Path = REPO_ROOT / "firmware" / "esp32-csi-node" / "release_bins"
+
     @property
     def node_ids(self) -> tuple[int, ...]:
         return tuple(sorted(self.node_positions))
@@ -91,6 +94,7 @@ _SCHEMA: dict[str, dict[str, tuple[str, type]]] = {
         "fallback_model": ("fallback_model", str),
     },
     "recording": {"enabled": ("record", bool), "dir": ("session_dir", Path)},
+    "setup": {"firmware_dir": ("firmware_dir", Path)},
 }
 
 

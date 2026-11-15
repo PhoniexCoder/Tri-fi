@@ -33,7 +33,11 @@ const PATHS = {
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   replay: 'M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4',
   target: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 11.5v1',
-  menu: 'M4 6h16M4 12h16M4 18h16',
+  usb: 'M12 3v13M12 3l-2.5 3h5L12 3zM12 16a2 2 0 1 0 0 4a2 2 0 0 0 0-4zM12 12l-5-2.5V7M12 13.5l5-2.5V8.5M5.5 5.5h3v1.5h-3zM16 6.5a1 1 0 1 0 2 0a1 1 0 0 0-2 0',
+  chip: 'M7 7h10v10H7zM10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4',
+  eye: 'M2 12s3.5-7 10-7s10 7 10 7s-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z',
+  eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  bolt: 'M13 2L4 14h7l-1 8 9-12h-7l1-8z',
 };
 
 export default function Icon({ name, size = 18, className = '', title }) {

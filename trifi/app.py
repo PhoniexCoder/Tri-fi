@@ -24,6 +24,7 @@ from .config import OP_MODES, Config
 from .events import Recorder, replay
 from .inference import InferenceWorker
 from .pipeline import InferenceRequest, Pipeline
+from .setup import BoardSetup
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ class LiveApp:
         self.clock = clock
         self.pipeline = Pipeline(cfg, start_t=clock(), model=worker.info if worker else None)
         self.api = Api(cfg, hello=self.hello, on_set_mode=self.set_mode)
+        self.setup = BoardSetup(cfg, broadcast=self.api.broadcast)
+        self.api.setup = self.setup
         self.packets = 0
         self._inflight: set[asyncio.Task] = set()
         self._last_detected = False
@@ -97,7 +100,7 @@ class LiveApp:
     # ── outputs ───────────────────────────────────────────────────────────────
 
     def hello(self) -> dict[str, Any]:
-        return hello_message(self.cfg, self.pipeline, live=True)
+        return {**hello_message(self.cfg, self.pipeline, live=True), "setup": self.setup.state()}
 
     def tick(self) -> dict[str, Any]:
         t = self.clock()
@@ -135,6 +138,7 @@ class LiveApp:
                  OP_MODES[self.pipeline.op_mode])
         period = 1.0 / self.cfg.broadcast_hz
         next_link_log = loop.time() + LINK_LOG_INTERVAL_S
+        setup_task = asyncio.create_task(self.setup.run(stop))
         try:
             while not stop.is_set():
                 try:
@@ -146,6 +150,7 @@ class LiveApp:
                     self.log_links()
                     next_link_log += LINK_LOG_INTERVAL_S
         finally:
+            setup_task.cancel()
             transport.close()
             server.close()
             await server.wait_closed()

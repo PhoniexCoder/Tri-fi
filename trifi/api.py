@@ -10,8 +10,11 @@ Server -> client messages carry "schema": SCHEMA_VERSION:
   {"type": "rescue_ai", ...}   snapshot at broadcast_hz (see Pipeline.snapshot)
   {"type": "error", "error": "..."}
 
+  {"type": "setup_state", ...}  USB boards and flashing progress (see setup.py)
+
 Client -> server:
   {"type": "set_op_mode", "mode": 0|1|2}
+  {"type": "setup_probe" | "setup_flash", ...}   laptop-local clients only
 """
 
 from __future__ import annotations
@@ -33,6 +36,22 @@ from .pipeline import SCHEMA_VERSION
 log = logging.getLogger(__name__)
 
 MAX_MESSAGE_BYTES = 4096
+LOCAL_HOSTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
+
+
+def _request_type(message: str | bytes) -> Optional[str]:
+    """The "type" of a client message, for tagging error replies; None if unreadable."""
+    try:
+        data = json.loads(message)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    kind = data.get("type") if isinstance(data, dict) else None
+    return kind if isinstance(kind, str) else None
+
+
+def is_local(ws: Optional[ServerConnection]) -> bool:
+    addr = getattr(ws, "remote_address", None)
+    return addr is not None and len(addr) > 0 and addr[0] in LOCAL_HOSTS
 
 
 class Api:
@@ -41,6 +60,7 @@ class Api:
         self.cfg = cfg
         self._hello = hello
         self._on_set_mode = on_set_mode
+        self.setup: Any = None          # BoardSetup when running live
         self.clients: set[ServerConnection] = set()
         if not cfg.api_token:
             log.warning("api_token is empty: dashboard WebSocket has no authentication")
@@ -66,15 +86,15 @@ class Api:
         try:
             await ws.send(json.dumps({**self._hello(), "type": "hello", "schema": SCHEMA_VERSION}))
             async for message in ws:
-                error = self._handle_message(message)
+                error = self._handle_message(message, ws)
                 if error:
                     await ws.send(json.dumps({"type": "error", "schema": SCHEMA_VERSION,
-                                              "error": error}))
+                                              "error": error, "request": _request_type(message)}))
         finally:
             self.clients.discard(ws)
             log.info("Dashboard disconnected (%d total)", len(self.clients))
 
-    def _handle_message(self, message: str | bytes) -> Optional[str]:
+    def _handle_message(self, message: str | bytes, ws: Optional[ServerConnection] = None) -> Optional[str]:
         try:
             data = json.loads(message)
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -90,7 +110,15 @@ class Api:
             self._on_set_mode(mode)
             log.info("Operating mode set to %d (%s)", mode, OP_MODES[mode])
             return None
-        return f"unknown message type {data.get('type')!r}"
+        kind = data.get("type")
+        if isinstance(kind, str) and kind.startswith("setup_"):
+            if self.setup is None:
+                return "board setup is only available while running live (python -m trifi run)"
+            if not is_local(ws):
+                return "board setup only works on the laptop the boards are plugged into"
+            result: Optional[str] = self.setup.handle(data)
+            return result
+        return f"unknown message type {kind!r}"
 
     def broadcast(self, payload: dict[str, Any]) -> None:
         if self.clients:

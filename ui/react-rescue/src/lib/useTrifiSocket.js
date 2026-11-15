@@ -25,6 +25,8 @@ export function useTrifiSocket() {
   const [hello, setHello] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState(null);
+  const [setup, setSetup] = useState(null);
+  const [setupError, setSetupError] = useState(null);
   const [receivedAt, setReceivedAt] = useState(null);
   const [stats, setStats] = useState({ reconnects: 0, messages: 0, rate: 0, connectedAt: null });
   const wsRef = useRef(null);
@@ -42,13 +44,16 @@ export function useTrifiSocket() {
       const ws = new WebSocket(endpoint.current.url);
       wsRef.current = ws;
       setStatus('connecting');
+      // A disposed effect's socket (React dev mode mounts twice) must not touch shared state.
       ws.onopen = () => {
+        if (disposed) return;
         setStatus('online');
         delay = 1000;
         setStats((s) => ({ ...s, reconnects: attempts - 1, connectedAt: Date.now() }));
       };
       ws.onclose = () => {
-        wsRef.current = null;
+        if (wsRef.current === ws) wsRef.current = null;
+        if (disposed) return;
         setStatus('offline');
         setStats((s) => ({ ...s, connectedAt: null, rate: 0 }));
         if (!disposed) {
@@ -57,6 +62,7 @@ export function useTrifiSocket() {
         }
       };
       ws.onmessage = (event) => {
+        if (disposed) return;
         let msg;
         try {
           msg = JSON.parse(event.data);
@@ -69,14 +75,18 @@ export function useTrifiSocket() {
         }
         if (msg.type === 'hello') {
           setHello(msg);
+          setSetup(msg.setup ?? null);
           setError(null);
         } else if (msg.type === 'rescue_ai') {
           const now = Date.now();
           arrivals.current.push(now);
           setSnapshot(msg);
           setReceivedAt(now);
+        } else if (msg.type === 'setup_state') {
+          setSetup(msg);
         } else if (msg.type === 'error') {
-          setError(msg.error);
+          if (typeof msg.request === 'string' && msg.request.startsWith('setup_')) setSetupError({ text: msg.error, at: Date.now() });
+          else setError(msg.error);
         }
       };
     };
@@ -97,6 +107,16 @@ export function useTrifiSocket() {
     };
   }, []);
 
+  /** Send any client message; false when not connected. */
+  const send = useCallback((msg) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+      return true;
+    }
+    return false;
+  }, []);
+
   const setMode = useCallback((mode) => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -115,6 +135,10 @@ export function useTrifiSocket() {
     stats,
     endpoint: endpoint.current,
     setMode,
+    send,
+    setup,
+    setupError,
+    clearSetupError: () => setSetupError(null),
     clearError: () => setError(null),
   };
 }

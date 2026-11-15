@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Setup view: ESP32 boards plugged into the laptop are detected automatically (USB vendor ID, polled every 1.5 s) with a banner on any view. Each board is checked (chip, flash size, MAC, installed firmware version) and installed with just the Wi-Fi name and password: the 8 or 4 MB image, next free node ID, laptop address and port are filled in. Full install or settings-only, live progress, plain-language errors (port in use, BOOT button), and a "node is sending data" confirmation. Laptop-local clients only; the password is never logged, broadcast or recorded. Backend: `trifi/boards.py`, `trifi/setup.py`, `[setup] firmware_dir`.
 - Dashboard v3, rebuilt from scratch with six views (keys 1–6): Overview (status banner, confidence figure, key-number tiles, map, readiness, node agreement, recent events), Map (layer toggles, heatmap on a relative scale, inside-node-area zone, possible-person areas, rescuer badge and confirmed-rescue marker, location tables), Nodes (one card per node with every reported field, plus a comparison table), Signals (nine time-series charts for confidence by source, per-node probability, counts, RSSI, frame rate, loss, breathing, motion and display confidence; 30 s to 10 min range, pause, CSV export), Events (type filters, search, CSV export) and System (connection metrics, model and modes, thresholds, calibration, legacy fields, raw JSON, history export). Charts have crosshair tooltips, keyboard stepping, legends and a table view, and use a colour-blind-checked palette in both themes.
 - The hello message now also carries `node_threshold` and `broadcast_hz`.
 - Dashboard redesign for field use: one plain-language status banner with next step, confidence vs threshold, nodes agreeing and detection duration; system-readiness checklist ("Ready to search"); 60 s confidence chart with detection periods; event log; one card per node (health, rate, loss, signal, calibration, model, breathing); map with health-coloured nodes and an approximate survivor area; light/dark theme; layouts for desktop, tablet and phone; offline system fonts; data-freshness indicator.
@@ -22,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - pytest suite (`tests/`): decoder round-trip against the real firmware serializer and structs, packet-magic registry, firmware host tests (anchor, DSP pacer), provisioning key/type checks, backend startup regression.
 
 ### Fixed
+- Dashboard dropped every outgoing message (mode changes) in development builds: React's double mount let the first socket's close handler clear the live connection.
 - Vitals packets were decoded at the wrong offsets and types; fused CSI+mmWave vitals were dropped entirely.
 - Raw CSI decoding now honours the header's subcarrier/antenna counts, rejects truncated frames and reads ESP-IDF's (imaginary, real) byte order.
 - WASM output packets shared magic `0xC5110004` with fused vitals; moved to `0xC5110005`.

@@ -91,7 +91,9 @@ Open `http://localhost:3000` (with a token: `http://localhost:3000/?token=<api_t
 
 ### 4. Connect nodes (optional)
 
-Flash the firmware (see `firmware/esp32-csi-node/README.md`). All nodes and the laptop join one 2.4 GHz network; the laptop's own mobile hotspot works, so no router is needed.
+**Easiest: the dashboard's Setup view.** With `python -m trifi run` going, plug an ESP32-S3 into the laptop. The dashboard detects it within a couple of seconds and offers to set it up; type the Wi-Fi name and password and press Install. The flash size (8 or 4 MB image), node ID, laptop address and port are filled in for you, and the board shows up on the Nodes view once it joins. It flashes the images in `firmware/esp32-csi-node/release_bins/` (change with `[setup] firmware_dir`), needs `pip install esptool pyserial esp-idf-nvs-partition-gen`, and only works from a browser on the laptop itself.
+
+**By hand:** flash the firmware (see `firmware/esp32-csi-node/README.md`). All nodes and the laptop join one 2.4 GHz network; the laptop's own mobile hotspot works, so no router is needed.
 
 Provision one node as the **anchor**. It broadcasts beacons at a fixed 100 Hz for the others to measure:
 

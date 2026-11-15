@@ -7,10 +7,11 @@ export const VIEWS = [
   { id: 'nodes', label: 'Nodes', icon: 'nodes', hint: 'Every sensor node in detail' },
   { id: 'signals', label: 'Signals', icon: 'chart', hint: 'All readings over time' },
   { id: 'events', label: 'Events', icon: 'list', hint: 'What happened, in order' },
+  { id: 'setup', label: 'Setup', icon: 'usb', hint: 'Install firmware on boards plugged into this laptop' },
   { id: 'system', label: 'System', icon: 'cog', hint: 'Connection, model, settings and raw data' },
 ];
 
-/** Side navigation (desktop), icon rail (tablet) and bottom bar (phone). Keys 1-6 switch views. */
+/** Side navigation (desktop), icon rail (tablet) and bottom bar (phone). Keys 1-7 switch views. */
 export default function Nav({ view, onView, badges = {} }) {
   return (
     <nav className="nav" aria-label="Views">
@@ -27,7 +28,7 @@ export default function Nav({ view, onView, badges = {} }) {
           </li>
         ))}
       </ul>
-      <p className="nav-foot">Keys 1–6 switch views</p>
+      <p className="nav-foot">Keys 1–7 switch views</p>
     </nav>
   );
 }

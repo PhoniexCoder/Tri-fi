@@ -139,5 +139,5 @@ export function useHistory({ snapshot, status, hello, error }) {
     prev.current.snapshot = snapshot;
   }, [snapshot]);
 
-  return { samples: samples.current, version, events, detectedSince, heatmap, clearEvents: () => setEvents([]) };
+  return { samples: samples.current, version, events, detectedSince, heatmap, clearEvents: () => setEvents([]), addEvent: log };
 }
