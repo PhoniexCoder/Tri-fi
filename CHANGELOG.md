@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - pytest suite (`tests/`): decoder round-trip against the real firmware serializer and structs, packet-magic registry, firmware host tests (anchor, DSP pacer), provisioning key/type checks, backend startup regression.
 
 ### Fixed
+- Breathing detection never worked: a 10-sample moving-average detrend high-passed the signal at several Hz, removing the whole 0.1–0.5 Hz band, and the 400-frame window was only 4 s at 100 Hz. It also reported a rate (15–30/min) on pure noise. Now: 30 s window by event time, ~10 Hz block averaging, linear + 10 s drift removal, whitened spectrum, and a peak that must be 12× the noise median and the strongest in 0.05–2 Hz (simulated: ~2% false alarms on noise, none on body sway). The rate is reported only when a rhythm is detected. `breathing_window_frames` default 400 → 3000; replay golden regenerated (only `br1` changed).
 - Dashboard dropped every outgoing message (mode changes) in development builds: React's double mount let the first socket's close handler clear the live connection.
 - Vitals packets were decoded at the wrong offsets and types; fused CSI+mmWave vitals were dropped entirely.
 - Raw CSI decoding now honours the header's subcarrier/antenna counts, rejects truncated frames and reads ESP-IDF's (imaginary, real) byte order.

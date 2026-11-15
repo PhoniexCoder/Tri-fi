@@ -58,7 +58,7 @@ export default function NodeCard({ id, color, rec, threshold, spark, position })
         <Row label="Calibration" value={cal?.done ? 'Complete' : cal ? `${pct(cal.progress)}` : '—'}
           hint="Empty-area noise baseline (15 windows). Keep people away until it completes." />
         <Row label="Breathing rhythm (CSI)" value={node?.breathing ? `${num(node.breathing, 1)} /min` : '—'}
-          hint="Strongest 0.1–0.5 Hz rhythm in the last 400 frames. Indicative only.">
+          hint="Breathing-like rhythm (6–30 per minute) found in the last 30 s of CSI; blank when none is found. Indicative only.">
           {node?.breathing_detected && <span className="tag tag-warn">seen</span>}
         </Row>
         <Row label="Motion (on-chip)" value={num(node?.motion, 2)} hint="Motion energy computed on the node itself, sent once a second." />

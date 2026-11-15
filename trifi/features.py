@@ -17,9 +17,8 @@ Usage (training):
 Usage (real-time ESP32):
     from trifi.features import preprocess_realtime_csi, get_breathing_info
 
-Known issue (Phase 4): the moving-average detrend in detect_breathing_fft()
-acts as a high-pass filter and attenuates the 0.1-0.5 Hz breathing band.
-Behaviour is kept unchanged here so replay regressions stay comparable.
+Breathing detection needs a long window (MIN_BREATHING_SECONDS); on short
+training windows the breathing features are zero.
 """
 
 from typing import Optional
@@ -31,6 +30,11 @@ import numpy as np
 BREATHING_FREQ_MIN = 0.1   # Hz (6 breaths/min)
 BREATHING_FREQ_MAX = 0.5   # Hz (30 breaths/min)
 ASSUMED_SAMPLE_RATE = 33.0 # Hz (ESP32 CSI typical rate)
+MIN_BREATHING_SECONDS = 15.0   # shortest buffer analysed (1.5 cycles at 6/min)
+ANALYSIS_RATE_HZ = 10.0        # signal is block-averaged down to about this rate
+ANALYSIS_BAND = (0.05, 2.0)    # Hz; spectrum range used for whitening and noise
+DRIFT_WINDOW_S = 10.0          # moving average removed as slow drift
+BREATHING_SNR_MIN = 12.0       # whitened peak / median noise; simulation-chosen
 
 FEATURE_NAMES = [
     # Statistical features (0-5)
@@ -78,93 +82,81 @@ def detect_breathing_fft(
     sample_rate: float = ASSUMED_SAMPLE_RATE,
 ) -> dict:
     """
-    Detect breathing signal from CSI amplitude time-series using FFT.
+    Detect a breathing rhythm (0.1-0.5 Hz, 6-30 per minute) in CSI amplitudes.
 
-    Analyzes the mean amplitude across subcarriers for periodic patterns
-    in the breathing frequency range (0.1-0.5 Hz = 6-30 breaths/min).
+    Steps: average the most variable quarter of subcarriers; downsample to
+    ~10 Hz by block averaging; remove the linear trend and a 10 s moving
+    average (slow drift); Hann-window and FFT; whiten the spectrum with a
+    power-law fit over 0.05-2 Hz so 1/f drift can't pose as a peak. Breathing
+    is reported when the strongest whitened peak in the breathing band is
+    BREATHING_SNR_MIN times the median of the rest of the analysis range and
+    is also the strongest peak outside the band (rules out body sway and
+    other faster motion). Needs at least MIN_BREATHING_SECONDS of data.
+
+    The threshold was chosen in simulation (about 2% false alarms on
+    noise-only input, none on 0.6-1.5 Hz sway); calibrate it on the test rig.
 
     Args:
         amplitudes: shape (n_subcarriers, n_timesteps)
         sample_rate: sampling rate in Hz
 
     Returns:
-        dict with breathing features:
-          - dominant_freq: strongest frequency in breathing band (Hz)
-          - band_power: normalized power in breathing band
-          - spectral_entropy: entropy of power spectrum (lower = more periodic)
-          - peak_snr: peak signal-to-noise ratio in breathing band
-          - detected: bool, True if breathing pattern detected
+        dict with dominant_freq (Hz), band_power (share of 0.05-2 Hz power in
+        the breathing band), spectral_entropy (bits; lower = more periodic),
+        peak_snr (whitened, capped at 100) and detected.
     """
     n_sub, n_time = amplitudes.shape
-
-    if n_time < 30:
+    if sample_rate <= 0 or n_time < 30 or n_time / sample_rate < MIN_BREATHING_SECONDS:
         return _empty_breathing()
 
-    # Average amplitude across top-variance subcarriers (most sensitive)
+    # Most variable subcarriers carry the body's modulation; averaging them cuts noise.
     sc_var = np.var(amplitudes, axis=1)
-    top_k = max(1, n_sub // 4)
-    top_idx = np.argsort(sc_var)[-top_k:]
-    signal = np.mean(amplitudes[top_idx], axis=0)
+    top_idx = np.argsort(sc_var)[-max(1, n_sub // 4):]
+    signal = np.mean(amplitudes[top_idx], axis=0, dtype=np.float64)
 
-    # Remove DC component and trend
-    signal = signal - np.mean(signal)
-    # Simple detrending with moving average
-    if len(signal) > 10:
-        kernel = np.ones(10) / 10
-        trend = np.convolve(signal, kernel, mode="same")
-        signal = signal - trend
+    # Block-average down to ~10 Hz: plenty for a 0.5 Hz band, and cheap.
+    factor = max(1, int(sample_rate // ANALYSIS_RATE_HZ))
+    usable = (len(signal) // factor) * factor
+    signal = signal[:usable].reshape(-1, factor).mean(axis=1)
+    fs = sample_rate / factor
 
-    # Apply Hanning window to reduce spectral leakage
-    window = np.hanning(len(signal))
-    windowed = signal * window
+    # Remove linear trend, then drift slower than ~0.1 Hz (10 s moving average).
+    t = np.arange(len(signal))
+    signal = signal - np.polyval(np.polyfit(t, signal, 1), t)
+    k = int(round(DRIFT_WINDOW_S * fs))
+    if 1 < k < len(signal):
+        padded = np.pad(signal, (k // 2, k - 1 - k // 2), mode="reflect")
+        signal = signal - np.convolve(padded, np.ones(k) / k, mode="valid")
 
-    # FFT
-    fft_vals = np.fft.rfft(windowed)
-    freqs = np.fft.rfftfreq(len(windowed), d=1.0 / sample_rate)
-    power = np.abs(fft_vals) ** 2
+    n_fft = 1 << int(np.ceil(np.log2(len(signal) * 4)))     # zero-pad for a finer peak
+    power = np.abs(np.fft.rfft(signal * np.hanning(len(signal)), n_fft)) ** 2
+    freqs = np.fft.rfftfreq(n_fft, d=1.0 / fs)
 
-    # Avoid DC component
-    if len(freqs) > 1:
-        power[0] = 0
-
-    # Breathing band mask
-    breath_mask = (freqs >= BREATHING_FREQ_MIN) & (freqs <= BREATHING_FREQ_MAX)
-
-    if not np.any(breath_mask) or np.sum(power) < 1e-10:
+    analysis = (freqs >= ANALYSIS_BAND[0]) & (freqs <= min(ANALYSIS_BAND[1], fs / 2))
+    band = (freqs >= BREATHING_FREQ_MIN) & (freqs <= BREATHING_FREQ_MAX)
+    other = analysis & ~band
+    if not np.any(band) or np.count_nonzero(other) < 4 or np.sum(power[analysis]) < 1e-12:
         return _empty_breathing()
 
-    breath_power = power[breath_mask]
-    breath_freqs = freqs[breath_mask]
-    total_power = np.sum(power[1:])  # exclude DC
+    # Whiten: divide by a power-law fit so drift (1/f) doesn't dominate the band.
+    slope, offset = np.polyfit(np.log(freqs[analysis]), np.log(power[analysis] + 1e-20), 1)
+    baseline = np.exp(offset + slope * np.log(np.maximum(freqs, 1e-3)))
+    white = power / baseline
 
-    # Dominant frequency in breathing band
-    peak_idx = np.argmax(breath_power)
-    dominant_freq = float(breath_freqs[peak_idx])
+    band_white = np.where(band, white, 0.0)
+    peak = int(np.argmax(band_white))
+    noise = float(np.median(white[other]))
+    peak_snr = float(white[peak] / (noise + 1e-20))
+    dominant = white[peak] >= float(np.max(white[other]))
 
-    # Normalized band power (ratio of breathing band to total)
-    band_power = float(np.sum(breath_power) / (total_power + 1e-10))
-
-    # Spectral entropy (lower = more periodic/structured)
-    p_norm = power[1:] / (np.sum(power[1:]) + 1e-10)
-    p_norm = p_norm[p_norm > 0]
-    spectral_entropy = float(-np.sum(p_norm * np.log2(p_norm + 1e-15)))
-
-    # Peak SNR: ratio of peak breathing power to mean non-breathing power
-    non_breath_power = power[~breath_mask]
-    non_breath_power = non_breath_power[1:] if len(non_breath_power) > 1 else non_breath_power
-    noise_mean = np.mean(non_breath_power) if len(non_breath_power) > 0 else 1e-10
-    peak_snr = float(breath_power[peak_idx] / (noise_mean + 1e-10))
-
-    # Detection: breathing present if band power is significant and SNR is high
-    # Field Optimized for ADR-092: 4% band power and 1.1x SNR
-    detected = (band_power > 0.04) and (peak_snr > 1.1)
-
+    p = power[analysis] / np.sum(power[analysis])
+    p = p[p > 0]
     return {
-        "dominant_freq": dominant_freq,
-        "band_power": band_power,
-        "spectral_entropy": spectral_entropy,
-        "peak_snr": min(peak_snr, 100.0),  # cap to avoid extreme values
-        "detected": detected,
+        "dominant_freq": float(freqs[peak]),
+        "band_power": float(np.sum(power[band & analysis]) / np.sum(power[analysis])),
+        "spectral_entropy": float(-np.sum(p * np.log2(p))),
+        "peak_snr": min(peak_snr, 100.0),
+        "detected": bool(dominant and peak_snr >= BREATHING_SNR_MIN),
     }
 
 

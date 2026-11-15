@@ -50,7 +50,7 @@ class Config:
     # [detection]
     op_mode: int = 0                    # see OP_MODES
     window_frames: int = 100            # CSI frames per inference window
-    breathing_window_frames: int = 400  # frames for the breathing FFT
+    breathing_window_frames: int = 3000  # frame buffer for breathing; the last 30 s are analysed
     node_detect_threshold: float = 0.45
     ui_detect_threshold: float = 0.30
     broadcast_hz: float = 5.0

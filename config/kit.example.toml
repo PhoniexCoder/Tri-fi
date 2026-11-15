@@ -18,7 +18,7 @@ api_token = ""            # set a long random string; dashboard opens with ?toke
 [detection]
 op_mode = 0                       # 0 = AI, 1 = legacy RSSI, 2 = 50/50 blend
 window_frames = 100               # frames per model window
-breathing_window_frames = 400     # frames per breathing FFT
+breathing_window_frames = 3000    # frame buffer; the last 30 s are analysed (needs >= 30 s x node rate)
 node_detect_threshold = 0.45
 ui_detect_threshold = 0.30
 broadcast_hz = 5.0

@@ -8,9 +8,8 @@ restructured so that:
   - inference is split into a request (on_packet) and a result
     (on_inference), so the caller decides where the model runs.
 
-Known issues kept on purpose until Phase 4 (see CLAUDE.md): the breathing
-detrend, 1-of-N consensus, centroid positions, and synthesised positions for
-extra survivors.
+Known issues kept on purpose until Phase 4 (see CLAUDE.md): 1-of-N
+consensus, centroid positions, and synthesised positions for extra survivors.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ N_SUBCARRIERS = 64            # model input height; frames are cut or padded to 
 CALIB_WINDOWS = 15            # windows of empty-room data for the noise baseline
 NOISE_GATE_RATIO = 1.01       # window std must exceed baseline by 1% to pass the gate
 GATE_OVERRIDE_CONF = 0.95     # model confidence that bypasses the gate
-MIN_BREATHING_FRAMES = 150
-DEFAULT_SAMPLE_HZ = 33.0
+BREATHING_WINDOW_S = 30.0      # seconds of CSI analysed for a breathing rhythm
+MIN_BREATHING_FRAMES = 30
 LINK_RATE_WINDOW_S = 2.0
 RESCUER_TIMEOUT_S = 5.0
 RESCUER_MESSAGES = {"RESCUER_ACTIVE", "RESCUE_CONFIRMED"}
@@ -56,6 +55,7 @@ class NodeState:
     def __init__(self, cfg: Config):
         self.amp: collections.deque = collections.deque(maxlen=cfg.window_frames)
         self.breath: collections.deque = collections.deque(maxlen=cfg.breathing_window_frames)
+        self.breath_t: collections.deque = collections.deque(maxlen=cfg.breathing_window_frames)
         self.times: collections.deque = collections.deque(maxlen=100)       # sample-rate estimate
         self.arrivals: collections.deque = collections.deque(maxlen=1024)   # link rate
         self.prob_hist: collections.deque = collections.deque(maxlen=5)
@@ -164,6 +164,7 @@ class Pipeline:
             amp = np.pad(amp, (0, N_SUBCARRIERS - len(amp)))
         node.amp.append(amp)
         node.breath.append(amp)
+        node.breath_t.append(t)
         node.times.append(t)
 
         if len(node.amp) < self.cfg.window_frames:
@@ -195,18 +196,24 @@ class Pipeline:
 
     @staticmethod
     def _update_breathing(node: NodeState) -> None:
+        """Breathing estimate over the last BREATHING_WINDOW_S seconds (event time)."""
         if len(node.breath) < MIN_BREATHING_FRAMES:
             return
-        hz = DEFAULT_SAMPLE_HZ
-        times = node.times
-        if len(times) > 10 and times[-1] > times[0]:
-            hz = (len(times) - 1) / (times[-1] - times[0])
+        times = list(node.breath_t)
+        end = times[-1]
+        first = next(i for i, ti in enumerate(times) if ti >= end - BREATHING_WINDOW_S)
+        span = end - times[first]
+        n = len(times) - first
+        if span <= 0 or n < MIN_BREATHING_FRAMES:
+            return
+        frames = list(node.breath)[first:]
         try:
-            b = get_breathing_info(np.stack(list(node.breath), axis=1), sample_rate=hz)
-        except (ValueError, FloatingPointError) as e:
+            b = get_breathing_info(np.stack(frames, axis=1), sample_rate=(n - 1) / span)
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError) as e:
             log.warning("Breathing estimate failed: %s", e)
             return
-        node.breathing = {"detected": bool(b["detected"]), "bpm": round(b["bpm"], 1),
+        detected = bool(b["detected"])
+        node.breathing = {"detected": detected, "bpm": round(b["bpm"], 1) if detected else 0.0,
                           "band_power": round(b["band_power"], 4)}
 
     # ── rescuer badge ─────────────────────────────────────────────────────────

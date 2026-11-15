@@ -56,10 +56,9 @@ bump `SCHEMA_VERSION` in `trifi/pipeline.py` and `ui/react-rescue/src/lib/useTri
 ## Known issues (fix in this order)
 
 1. Phase 1 firmware changes (anchor mode, DSP pacing, port 4444) are host-tested and CI-compiled only — verify on 3 receivers + anchor.
-2. Breathing detrend in `trifi/features.py` acts as a high-pass and removes the 0.1–0.5 Hz band.
-3. Consensus accepts 1 node; positions are weighted centroids; extra survivor dots are synthesised; rescuer position uses node RSSI, not the badge.
-4. Node UDP is unauthenticated; OTA open unless a PSK is provisioned.
-5. Node IDs come from config (default 1–3); the anchor uses node ID 0 and is not a configured node.
+2. Consensus accepts 1 node; positions are weighted centroids; extra survivor dots are synthesised; rescuer position uses node RSSI, not the badge.
+3. Node UDP is unauthenticated; OTA open unless a PSK is provisioned.
+4. Node IDs come from config (default 1–3); the anchor uses node ID 0 and is not a configured node.
 
 ## Rules
 

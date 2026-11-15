@@ -66,7 +66,7 @@ export default function SignalsView({ ctx }) {
     { id: 'loss', title: 'Packet loss per node', series: perNode('loss'), fmt: (v) => `${(v * 100).toFixed(1)}%`, yMin: 0,
       sub: 'Missing frames in the sequence', refs: [{ y: 0.05, label: 'Limit 5%', tone: 'neutral' }] },
     { id: 'bpm', title: 'Breathing rhythm per node (CSI)', series: perNode('bpm'), fmt: one, unit: ' /min', yMin: 0,
-      sub: 'Strongest 6–30 per minute rhythm. Indicative only; 0 = none found.' },
+      sub: 'Rate of a 6–30 per minute rhythm found in the last 30 s; 0 = none found. Indicative only.' },
     { id: 'motion', title: 'Motion per node (on-chip)', series: perNode('motion'), fmt: (v) => v.toFixed(2), yMin: 0,
       sub: 'Motion energy computed on each node, sent once a second' },
     { id: 'display', title: 'Display confidence', series: display, fmt: pctFmt, yMin: 0, yMax: 1,
