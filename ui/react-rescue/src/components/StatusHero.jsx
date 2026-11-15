@@ -1,76 +1,68 @@
 import React from 'react';
-import { consensusText, duration, pct } from '../lib/format';
+import { consensus, duration, nodesAgree, pct } from '../lib/format';
+import { Meter } from './charts/Figures';
 import Icon from './Icon';
 
-/**
- * The one thing an operator must see at a glance: is there a possible
- * survivor, how sure is the system, and what to do next.
- */
-export default function StatusHero({ snapshot, ready, detectedSince }) {
-  const detected = snapshot?.ai_detected ?? false;
-  const confidence = snapshot?.confidence_raw ?? 0;
-  const threshold = snapshot?.ui_threshold ?? 0.3;
-  const agree = snapshot?.n_detecting ?? 0;
-  const total = snapshot?.nodes?.length ?? 0;
-  const survivors = snapshot?.survivors ?? 0;
+/** The one plain-language answer the operator needs first, plus the next step. */
+export function heroState(status, snapshot, ready, missing) {
+  if (status !== 'online' || !snapshot)
+    return { tone: 'idle', icon: 'wifi', title: status === 'offline' ? 'Backend not connected' : 'Waiting for data',
+      next: status === 'offline' ? 'Start the backend with python -m trifi run. The page reconnects by itself.' : 'The first update should arrive within a second.' };
+  if (snapshot.ai_detected)
+    return { tone: 'alert', icon: 'alert', title: 'Possible survivor detected',
+      next: 'Send a team to the marked area and confirm with the rescuer badge. Keep the nodes still.' };
+  if (!ready)
+    return { tone: 'warn', icon: 'warn', title: 'Getting ready',
+      next: `Results are not reliable until this is fixed: ${missing.join(', ').toLowerCase() || 'setup'}.` };
+  return { tone: 'info', icon: 'search', title: 'No signs of life detected yet',
+    next: 'Keep searching. No detection does not mean the area is clear; move the nodes to cover new ground.' };
+}
 
-  let tone = 'idle';
-  let title = 'Waiting for data';
-  let advice = 'Start the backend and power on the nodes.';
-  if (snapshot) {
-    if (detected) {
-      tone = 'alert';
-      title = survivors > 1 ? `Possible survivors detected (${survivors})` : 'Possible survivor detected';
-      advice = 'Confirm with a call-out, acoustic sensor or camera before committing a team.';
-    } else if (!ready) {
-      tone = 'warn';
-      title = 'Not ready to search';
-      advice = 'Check the readiness list below. Keep the area clear while nodes calibrate.';
-    } else {
-      // Deliberately not green: "nothing detected" must never read as "all clear".
-      tone = 'search';
-      title = 'Searching — no survivor detected';
-      advice = 'No detection does not mean the area is clear. Keep other search methods going.';
-    }
-  }
-  const icon = { alert: 'warn', warn: 'warn', search: 'pulse', idle: 'info' }[tone];
-
+export default function StatusHero({ state, snapshot, threshold, detectedSince }) {
+  const conf = snapshot?.confidence_raw;
+  const detected = snapshot?.ai_detected;
+  const since = detected && detectedSince != null ? snapshot.t - detectedSince : null;
+  const where = consensus(snapshot?.consensus_status);
   return (
-    <section className={`hero hero-${tone}`} aria-live="polite">
-      <div className="hero-state">
-        <span className="hero-icon">
-          <Icon name={icon} size={34} />
-        </span>
+    <section className={`hero hero-${state.tone}`} aria-live="polite" aria-labelledby="hero-title">
+      <div className="hero-main">
+        <div className="hero-icon"><Icon name={state.icon} size={28} /></div>
         <div>
-          <h1 className="hero-title">{title}</h1>
-          <p className="hero-advice">{advice}</p>
+          <h2 id="hero-title" className="hero-title">{state.title}</h2>
+          <p className="hero-next">{state.next}</p>
+          {snapshot?.rescuer?.confirmed && (
+            <p className="hero-chip"><Icon name="badge" size={15} /> Rescue confirmed by the rescuer badge</p>
+          )}
         </div>
       </div>
 
-      <div className="hero-stats">
-        <div className="stat stat-confidence">
-          <div className="stat-label">Model confidence</div>
-          <div className="stat-value">{snapshot ? pct(confidence) : '—'}</div>
-          <div className="meter" role="meter" aria-valuenow={Math.round(confidence * 100)} aria-valuemin={0} aria-valuemax={100}>
-            <div className="meter-fill" style={{ width: pct(confidence) }} />
-            <div className="meter-threshold" style={{ left: pct(threshold) }} />
-          </div>
-          <div className="stat-hint">Alert threshold {pct(threshold)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Nodes agreeing</div>
-          <div className="stat-value">
-            {snapshot ? agree : '—'}
-            {snapshot && <span className="stat-of"> / {total}</span>}
-          </div>
-          <div className="stat-hint">{snapshot ? consensusText(snapshot.consensus_status) : '—'}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Detected for</div>
-          <div className="stat-value">{detected && detectedSince != null ? duration(snapshot.t - detectedSince) : '—'}</div>
-          <div className="stat-hint">{snapshot?.ai_mode ?? ''}</div>
-        </div>
+      <div className="hero-figure" title="Fused detection confidence from the active mode. An alert needs this above the threshold and at least one node agreeing.">
+        <div className="hero-figure-label">Detection confidence</div>
+        <div className="hero-number">{snapshot ? pct(conf) : '—'}</div>
+        <Meter value={conf} marker={threshold} tone={detected ? 'alert' : 'accent'}
+          label="Detection confidence" valueText={`${pct(conf)}, alert threshold ${pct(threshold)}`} />
+        <div className="hero-figure-foot">Alert at {pct(threshold)}</div>
       </div>
+
+      <dl className="hero-facts">
+        <div>
+          <dt>Nodes agreeing</dt>
+          <dd>{snapshot ? `${snapshot.n_detecting} of ${snapshot.nodes?.length ?? 0}` : '—'}</dd>
+        </div>
+        <div>
+          <dt>Where</dt>
+          <dd title={where.long}>{snapshot ? where.short : '—'}</dd>
+        </div>
+        <div>
+          <dt>People (estimate)</dt>
+          <dd>{detected ? snapshot.survivors : snapshot ? '0' : '—'}</dd>
+        </div>
+        <div>
+          <dt>Detected for</dt>
+          <dd>{since != null ? duration(since) : '—'}</dd>
+        </div>
+      </dl>
+      {detected && <p className="sr-only">{nodesAgree(snapshot.n_detecting)}</p>}
     </section>
   );
 }

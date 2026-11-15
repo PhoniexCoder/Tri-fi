@@ -1,0 +1,114 @@
+/*
+ * Design tokens. Chart chrome, categorical series and status colours come
+ * from the validated dataviz reference palette (adjacent CVD ΔE ≥ 8.4 in
+ * both themes). Status colours are reserved for state and always ship with
+ * an icon and a word. Dark is the default (night operations); light is for
+ * sunlight.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232321;
+  --surface-3: #2c2c2a;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --grid: #2c2c2a;
+  --axis: #383835;
+
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-3: #898781;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --series-other: #898781;
+
+  --accent: #3987e5;
+  --accent-ink: #8dbcf2;
+  --accent-wash: rgba(57, 135, 229, 0.14);
+  --accent-track: #1b2633;
+  --spark: #6b6a65;
+  --heat: #3987e5;
+
+  --ok: #0ca30c;
+  --warn: #fab219;
+  --serious: #ec835a;
+  --bad: #d03b3b;
+  --alert: #d03b3b;
+  --ok-text: #5fcf5f;
+  --warn-text: #fab219;
+  --bad-text: #f08080;
+  --alert-text: #f08080;
+  --ok-wash: rgba(12, 163, 12, 0.14);
+  --warn-wash: rgba(250, 178, 25, 0.13);
+  --bad-wash: rgba(208, 59, 59, 0.16);
+  --alert-wash: rgba(208, 59, 59, 0.2);
+  --alert-track: #3a2020;
+  --ok-track: #1a2e1d;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --page: #f4f3ef;
+  --surface: #fcfcfb;
+  --surface-2: #f3f2ee;
+  --surface-3: #e9e8e2;
+  --border: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.2);
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #6f6e69;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+  --series-other: #898781;
+
+  --accent: #2a78d6;
+  --accent-ink: #1c5cab;
+  --accent-wash: rgba(42, 120, 214, 0.1);
+  --accent-track: #cde2fb;
+  --spark: #b5b4ad;
+  --heat: #2a78d6;
+
+  --ok-text: #006300;
+  --warn-text: #7a4f00;
+  --bad-text: #a82828;
+  --alert-text: #a82828;
+  --ok-wash: rgba(12, 163, 12, 0.1);
+  --warn-wash: rgba(250, 178, 25, 0.16);
+  --bad-wash: rgba(208, 59, 59, 0.1);
+  --alert-wash: rgba(208, 59, 59, 0.12);
+  --alert-track: #f6d4d4;
+  --ok-track: #d3efd3;
+
+  --shadow: 0 1px 2px rgba(11, 11, 11, 0.06), 0 6px 18px rgba(11, 11, 11, 0.06);
+}

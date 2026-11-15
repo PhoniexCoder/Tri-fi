@@ -1,0 +1,89 @@
+/* View-specific pieces: event filters and search, mode list, raw JSON. */
+/* Filters */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.chip.on {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.chip:not(.on) {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.chip-ok .icon { color: var(--ok); }
+.chip-warn .icon { color: var(--warn); }
+.chip-bad .icon { color: var(--bad); }
+.chip-alert .icon { color: var(--alert); }
+.chip-info .icon { color: var(--accent); }
+.chip-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  min-height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-3);
+}
+.search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  min-width: 140px;
+  color: var(--ink);
+}
+
+/* System view */
+.mode-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mode-list li {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.mode-list li.on {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.mode-list li strong {
+  margin-right: 8px;
+}
+.mode-list p {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+.raw summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.raw pre {
+  margin: 10px 0 0;
+  padding: 12px;
+  max-height: 480px;
+  overflow: auto;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font: 12.5px/1.5 var(--mono);
+}

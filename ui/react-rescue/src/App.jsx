@@ -1,81 +1,137 @@
 import React, { useEffect, useState } from 'react';
-import ConfidenceChart from './components/ConfidenceChart';
-import EventLog from './components/EventLog';
-import FieldMap from './components/FieldMap';
-import NodeList from './components/NodeList';
-import Readiness from './components/Readiness';
-import StatusHero from './components/StatusHero';
-import TopBar from './components/TopBar';
+import Icon from './components/Icon';
+import Nav, { VIEWS } from './components/Nav';
+import { heroState } from './components/StatusHero';
+import TopBar, { connection } from './components/TopBar';
+import { linkState } from './lib/format';
 import { readiness } from './lib/readiness';
 import { useHistory } from './lib/useHistory';
 import { useTrifiSocket } from './lib/useTrifiSocket';
+import EventsView from './views/EventsView';
+import MapView from './views/MapView';
+import NodesView from './views/NodesView';
+import OverviewView from './views/OverviewView';
+import SignalsView from './views/SignalsView';
+import SystemView from './views/SystemView';
 
-function loadTheme() {
+const PAGES = { overview: OverviewView, map: MapView, nodes: NodesView, signals: SignalsView, events: EventsView, system: SystemView };
+const STALE_UPDATES = 5; // missed broadcasts before the screen warns that data stopped
+
+function storedTheme() {
   try {
     return localStorage.getItem('trifi-theme') || 'dark';
   } catch {
     return 'dark';
   }
 }
+const viewFromHash = () => {
+  const id = window.location.hash.replace(/^#\/?/, '');
+  return PAGES[id] ? id : 'overview';
+};
 
 export default function App() {
-  const { status, hello, snapshot, error, receivedAt, setMode } = useTrifiSocket();
-  const { points, events, detectedSince } = useHistory(snapshot, status, hello);
-  const [theme, setTheme] = useState(loadTheme);
+  const socket = useTrifiSocket();
+  const { status, hello, snapshot, error, receivedAt } = socket;
+  const history = useHistory({ snapshot, status, hello, error });
+  const [theme, setTheme] = useState(storedTheme);
+  const [view, setView] = useState(viewFromHash);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(timer);
+    const onHash = () => setView(viewFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => { clearInterval(timer); window.removeEventListener('hashchange', onHash); };
   }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem('trifi-theme', theme);
-    } catch {
-      /* storage unavailable: theme just won't persist */
-    }
+    try { localStorage.setItem('trifi-theme', theme); } catch { /* theme just won't persist */ }
   }, [theme]);
 
-  const nodeIds = hello?.node_ids ?? [];
-  const { items, ready } = readiness(status, hello, snapshot);
+  const go = (id) => {
+    window.location.hash = `/${id}`;
+    setView(id);
+    window.scrollTo({ top: 0 });
+  };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || /input|textarea|select/i.test(e.target.tagName)) return;
+      const i = Number(e.key) - 1;
+      if (i >= 0 && i < VIEWS.length) go(VIEWS[i].id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const broadcastHz = hello?.broadcast_hz ?? 5;
+  const staleAfter = Math.max(2, STALE_UPDATES / broadcastHz);
   const ageSeconds = receivedAt ? (now - receivedAt) / 1000 : null;
+  const conn = connection(status, hello, snapshot, ageSeconds, staleAfter);
+  const { items, ready, missing } = readiness(status, hello, snapshot);
+  const hero = heroState(status, snapshot, ready, missing);
+  const detected = Boolean(snapshot?.ai_detected) && status === 'online';
+
+  useEffect(() => {
+    document.title = detected ? '⚠ Possible survivor · TRI-FI' : 'TRI-FI · Survivor search console';
+  }, [detected]);
+
+  const nodeIds = hello?.node_ids ?? [];
+  const unhealthy = snapshot ? nodeIds.filter((id) => linkState(snapshot.links?.[id]).key !== 'good').length : 0;
+  const badges = {
+    ...(detected && { overview: { tone: 'alert', text: 'Alert' } }),
+    ...(unhealthy && { nodes: { tone: 'warn', text: String(unhealthy) } }),
+  };
+
+  const ctx = {
+    status, hello, snapshot, history, socket, conn, ageSeconds, now, ready, items, hero,
+    threshold: snapshot?.ui_threshold ?? hello?.ui_threshold ?? 0.3,
+    nodeThreshold: hello?.node_threshold ?? 0.45,
+  };
+  const Page = PAGES[view];
+  const current = VIEWS.find((v) => v.id === view);
 
   return (
-    <div className="app">
-      <TopBar
-        status={status}
-        hello={hello}
-        snapshot={snapshot}
-        ageSeconds={ageSeconds}
-        onMode={setMode}
-        theme={theme}
-        onTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      />
-
-      {error && <div className="banner banner-bad">{error}</div>}
-      {status === 'offline' && (
-        <div className="banner banner-bad">
-          Can't reach the backend. Check it is running (<code>python -m trifi run</code>) and, if the kit
-          uses a token, that this page's address ends in <code>?token=…</code>. Retrying automatically.
-        </div>
-      )}
-
-      <main className="layout">
-        <StatusHero snapshot={snapshot} ready={ready} detectedSince={detectedSince} />
-        <div className="col col-left">
-          <Readiness items={items} ready={ready} />
-          <ConfidenceChart points={points} threshold={snapshot?.ui_threshold ?? 0.3} />
-          <EventLog events={events} />
-        </div>
-        <div className="col col-center">
-          <FieldMap snapshot={snapshot} hello={hello} />
-        </div>
-        <div className="col col-right">
-          <NodeList snapshot={snapshot} nodeIds={nodeIds} />
-        </div>
-      </main>
+    <div className={`app ${detected ? 'is-alert' : ''}`}>
+      <a className="skip" href="#main">Skip to content</a>
+      <TopBar conn={conn} hello={hello} snapshot={snapshot} onMode={socket.setMode} theme={theme}
+        onTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+      <div className="shell">
+        <Nav view={view} onView={go} badges={badges} />
+        <main id="main" className="main" tabIndex={-1}>
+          {error && (
+            <div className="banner banner-bad" role="alert">
+              <Icon name="cross" size={16} /> <span>{error}</span>
+              <button type="button" className="btn btn-ghost btn-sm push-right" onClick={socket.clearError}>Dismiss</button>
+            </div>
+          )}
+          {status === 'offline' && (
+            <div className="banner banner-bad" role="alert">
+              <Icon name="wifiOff" size={16} />
+              <span>Can't reach the backend. Check it is running (<code>python -m trifi run</code>) and, if the kit uses a token, that this page's address ends in <code>?token=…</code>. Retrying automatically.</span>
+            </div>
+          )}
+          {status === 'online' && conn.tone === 'warn' && (
+            <div className="banner banner-warn" role="alert">
+              <Icon name="clock" size={16} />
+              <span>No update for {ageSeconds.toFixed(0)} s. The values below are frozen at the last update; don't rely on them until updates resume.</span>
+            </div>
+          )}
+          {detected && view !== 'overview' && (
+            <button type="button" className="banner banner-alert" onClick={() => go('overview')}>
+              <Icon name="alert" size={16} /> <span><strong>Possible survivor detected.</strong> Open the overview.</span>
+            </button>
+          )}
+          <div className="view-head">
+            <h1>{current.label}</h1>
+            <p>{current.hint}</p>
+          </div>
+          <div id={`view-${view}`} role="tabpanel" className={conn.tone === 'warn' ? 'is-stale' : ''}>
+            <Page ctx={ctx} go={go} />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

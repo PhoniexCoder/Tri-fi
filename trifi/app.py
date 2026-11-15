@@ -167,6 +167,8 @@ def hello_message(cfg: Config, pipeline: Optional[Pipeline], live: bool) -> dict
         "model": {"loaded": bool(pipeline and pipeline.model),
                   "classes": pipeline.model.n_classes if pipeline and pipeline.model else 0},
         "ui_threshold": cfg.ui_detect_threshold,
+        "node_threshold": cfg.node_detect_threshold,
+        "broadcast_hz": cfg.broadcast_hz,
     }
 
 
