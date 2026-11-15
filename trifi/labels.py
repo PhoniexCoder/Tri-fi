@@ -24,6 +24,27 @@ from pathlib import Path
 from typing import Any, Optional
 
 LABELS = ("empty", "present")                    # exported as class 0 / 1
+
+# The six classes of custom_dataset/ (recorded 4-11 April 2026, file names
+# node<N>_label<C>_<time>.npy) and of the 6-class model trained on it:
+# class -> (people in the area, what they were doing).
+DATASET_CLASSES: dict[int, tuple[int, str]] = {
+    0: (0, "empty"),
+    1: (1, "one person sitting"),
+    2: (1, "one person moving in the centre"),
+    3: (1, "one person moving near the nodes (perimeter)"),
+    4: (2, "two people sitting or standing"),
+    5: (2, "two people walking inside"),
+}
+
+
+def people_for_class(cls: int, n_classes: int) -> int:
+    """People count a model's predicted class stands for."""
+    if cls == 0:
+        return 0
+    if n_classes == len(DATASET_CLASSES):
+        return DATASET_CLASSES.get(cls, (1, ""))[0]
+    return 1            # presence model: 1 = someone is there; it can't count
 ACTIVITIES = ("", "still", "breathing", "moving")
 MAX_PEOPLE = 20
 MAX_SETUP_CHARS = 200
