@@ -4,3 +4,5 @@ websockets==16.0
 pytest==9.0.3
 ruff==0.16.1
 mypy==1.11.2
+# Settings image builder used by the Setup view's flashing tests (pure Python).
+esp-idf-nvs-partition-gen==0.2.0

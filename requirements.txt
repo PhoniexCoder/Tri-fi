@@ -11,7 +11,7 @@ torchvision==0.22.1
 # Node tools (firmware/esp32-csi-node/provision.py, scripts/mmwave_fusion_bridge.py)
 pyserial==3.5
 esptool==5.3.1
-esp-idf-nvs-partition-gen>=0.1
+esp-idf-nvs-partition-gen==0.2.0
 
 # Optional: batch feature extraction from H5 training files (trifi.features.preprocess_batch)
 # h5py==3.13.0
